@@ -11,8 +11,17 @@ async function pipeUpload({ req, session }) {
 	return new Promise((resolve, reject) => {
 		const busboy = Busboy({ headers: req.headers });
 		let settled = false;
+		let fileReceived = false;
+
+		const complete = (callback, value) => {
+			if (settled) return;
+			settled = true;
+			removeUploadSession(session.id);
+			callback(value);
+		};
 
 		busboy.on('file', async (_field, file, info) => {
+			fileReceived = true;
 			const streamBuffer = new PassThrough();
 			file.pipe(streamBuffer);
 
@@ -87,8 +96,7 @@ async function pipeUpload({ req, session }) {
 					status: 'completed',
 					file: metadata,
 				});
-				settled = true;
-				resolve(metadata);
+				complete(resolve, metadata);
 			} catch (error) {
 				updateUploadSession(session.id, { status: 'failed' });
 				emitUploadEvent(session.id, {
@@ -97,17 +105,15 @@ async function pipeUpload({ req, session }) {
 					status: 'failed',
 					message: error.message,
 				});
-				settled = true;
-				reject(error);
+				complete(reject, error);
 			}
 		});
 
-		busboy.on('error', reject);
+		busboy.on('error', (error) => complete(reject, error));
 		busboy.on('finish', () => {
-			if (!settled) {
-				reject(new Error('No file payload received'));
+			if (!fileReceived) {
+				complete(reject, new Error('No file payload received'));
 			}
-			removeUploadSession(session.id);
 		});
 
 		req.pipe(busboy);

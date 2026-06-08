@@ -45,7 +45,7 @@ import { api } from '../services/api';
 const fileTreeStore = useFileTreeStore();
 const uploadQueueStore = useUploadQueueStore();
 const { currentPath, filteredFiles, breadcrumbs, searchTerm, isLoading } = storeToRefs(fileTreeStore);
-const { activeUploads, totalProgress } = storeToRefs(uploadQueueStore);
+const { uploads, totalProgress } = storeToRefs(uploadQueueStore);
 
 const isDragActive = ref(false);
 const dragDepth = ref(0);
@@ -647,7 +647,10 @@ async function renameSelectedFile() {
 	isActionRunning.value = true;
 
 	try {
-		await api.renameFile(file.id, { name: nextName.trim() });
+		await uploadQueueStore.trackServerOperation(
+			{ type: 'rename', name: nextName.trim(), fromName: file.file_name, toName: nextName.trim() },
+			() => api.renameFile(file.id, { name: nextName.trim() }),
+		);
 		await refreshCurrentFolder();
 	} catch (error) {
 		actionError.value = error.message;
@@ -669,9 +672,15 @@ async function deleteSelectedFile() {
 
 	try {
 		if (files.length === 1) {
-			await api.deleteFile(files[0].id);
+			await uploadQueueStore.trackServerOperation(
+				{ type: 'delete', name: files[0].file_name },
+				() => api.deleteFile(files[0].id),
+			);
 		} else {
-			await api.deleteFiles(files.map((file) => file.id));
+			await uploadQueueStore.trackServerOperation(
+				{ type: 'delete', name: `${files.length} item`, batchTotal: files.length },
+				() => api.deleteFiles(files.map((file) => file.id)),
+			);
 		}
 		clearSelection();
 		await refreshCurrentFolder();
@@ -763,15 +772,17 @@ function sortIndicator(field) {
 function triggerDownload(file) {
 	closeContextMenu();
 	if (file?.is_folder) return;
-	window.open(api.downloadUrl(file.id), '_blank', 'noopener,noreferrer');
+	uploadQueueStore.downloadFile(file).catch((error) => {
+		actionError.value = error.message;
+	});
 }
 
 function downloadSelection() {
 	const downloadableFiles = getActionFiles().filter((file) => !file.is_folder);
 	closeContextMenu();
-	for (const file of downloadableFiles) {
-		window.open(api.downloadUrl(file.id), '_blank', 'noopener,noreferrer');
-	}
+	uploadQueueStore.downloadFiles(downloadableFiles).catch((error) => {
+		actionError.value = error.message;
+	});
 }
 
 function handleGlobalPointer() {
@@ -1105,6 +1116,6 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 
-		<FloatingProgressToast :uploads="activeUploads" :total-progress="totalProgress" />
+		<FloatingProgressToast :uploads="uploads" :total-progress="totalProgress" @close="uploadQueueStore.clearOperations" @close-item="uploadQueueStore.closeOperation" />
 	</DriveShell>
 </template>

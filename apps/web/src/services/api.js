@@ -92,19 +92,21 @@ export const api = {
 			method: 'POST',
 		});
 	},
-	initiateUpload(payload) {
+	initiateUpload(payload, options = {}) {
 		return request('/uploads/initiate', {
 			method: 'POST',
 			body: JSON.stringify(payload),
+			signal: options.signal,
 		});
 	},
-	async uploadFile(uploadId, file) {
+	async uploadFile(uploadId, file, options = {}) {
 		const formData = new FormData();
 		formData.append('file', file);
 
 		const response = await fetch(`${API_BASE_URL}/uploads/${uploadId}/stream`, {
 			method: 'POST',
 			body: formData,
+			signal: options.signal,
 		});
 
 		if (!response.ok) {

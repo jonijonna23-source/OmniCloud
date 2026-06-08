@@ -17,7 +17,7 @@ const accountStore = useAccountManagementStore();
 
 const { currentPath, filteredFiles, breadcrumbs, searchTerm, isLoading, error } = storeToRefs(fileTreeStore);
 const { accounts } = storeToRefs(accountStore);
-const { uploads, activeUploads, totalProgress } = storeToRefs(uploadQueueStore);
+const { uploads, totalProgress } = storeToRefs(uploadQueueStore);
 
 const health = ref(null);
 
@@ -126,6 +126,6 @@ onMounted(() => {
 			</div>
 		</section>
 
-		<FloatingProgressToast :uploads="activeUploads" :total-progress="totalProgress" />
+		<FloatingProgressToast :uploads="uploads" :total-progress="totalProgress" @close="uploadQueueStore.clearOperations" @close-item="uploadQueueStore.closeOperation" />
 	</main>
 </template>
