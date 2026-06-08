@@ -61,8 +61,7 @@ export function upsertCloudAccount({
     ) VALUES (
       @id, @email, @provider, @encrypted_credentials, @total_space, @used_space, @status
     )
-    ON CONFLICT(email) DO UPDATE SET
-      provider = excluded.provider,
+		ON CONFLICT(provider, email) DO UPDATE SET
       encrypted_credentials = excluded.encrypted_credentials,
       total_space = excluded.total_space,
       used_space = excluded.used_space,
@@ -78,5 +77,5 @@ export function upsertCloudAccount({
 		status,
 	});
 
-	return db.prepare('SELECT * FROM cloud_accounts WHERE email = ?').get(email);
+	return db.prepare('SELECT * FROM cloud_accounts WHERE provider = ? AND email = ?').get(provider, email);
 }

@@ -55,6 +55,21 @@ export const api = {
 	getOneDriveConnectUrl() {
 		return request('/accounts/onedrive/connect');
 	},
+	getDropboxIntegrationStatus() {
+		return request('/accounts/dropbox/status');
+	},
+	getDropboxConnectUrl() {
+		return request('/accounts/dropbox/connect');
+	},
+	getMegaIntegrationStatus() {
+		return request('/accounts/mega/status');
+	},
+	connectMegaAccount(payload) {
+		return request('/accounts/mega/connect', {
+			method: 'POST',
+			body: JSON.stringify(payload),
+		});
+	},
 	listAccounts() {
 		return request('/accounts');
 	},

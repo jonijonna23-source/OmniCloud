@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import {
+	IconBrandDropbox,
 	IconBrandGoogleDrive,
 	IconChevronDown,
 	IconCloud,
@@ -10,6 +11,7 @@ import {
 	IconRefresh,
 } from '@tabler/icons-vue';
 import DriveShell from '../components/DriveShell.vue';
+import MegaConnectModal from '../components/MegaConnectModal.vue';
 import { useAccountManagementStore } from '../stores/accountManagement';
 import { api } from '../services/api';
 
@@ -20,6 +22,7 @@ const connectingProvider = ref('');
 const actionError = ref('');
 const isSyncing = ref(false);
 const isConnectMenuOpen = ref(false);
+const isMegaModalOpen = ref(false);
 
 const totalUsed = computed(() => accounts.value.reduce((sum, account) => sum + Number(account.used_space || 0), 0));
 const totalSpace = computed(() => accounts.value.reduce((sum, account) => sum + Number(account.total_space || 0), 0));
@@ -117,6 +120,8 @@ function formatBytes(value) {
 function providerLabel(provider) {
 	if (provider === 'google_drive') return 'Google Drive';
 	if (provider === 'onedrive') return 'OneDrive';
+	if (provider === 'dropbox') return 'Dropbox';
+	if (provider === 'mega') return 'MEGA';
 	return provider;
 }
 
@@ -151,6 +156,45 @@ async function connectOneDrive() {
 	try {
 		const { data } = await api.getOneDriveConnectUrl();
 		window.location.href = data.authorizationUrl;
+	} catch (error) {
+		actionError.value = error.message;
+	} finally {
+		connectingProvider.value = '';
+	}
+}
+
+async function connectDropbox() {
+	connectingProvider.value = 'dropbox';
+	isConnectMenuOpen.value = false;
+	actionError.value = '';
+	try {
+		const { data } = await api.getDropboxConnectUrl();
+		window.location.href = data.authorizationUrl;
+	} catch (error) {
+		actionError.value = error.message;
+	} finally {
+		connectingProvider.value = '';
+	}
+}
+
+function openMegaModal() {
+	isConnectMenuOpen.value = false;
+	actionError.value = '';
+	isMegaModalOpen.value = true;
+}
+
+function closeMegaModal() {
+	if (connectingProvider.value === 'mega') return;
+	isMegaModalOpen.value = false;
+}
+
+async function connectMega(payload) {
+	connectingProvider.value = 'mega';
+	actionError.value = '';
+	try {
+		await api.connectMegaAccount(payload);
+		await accountStore.loadAccounts();
+		isMegaModalOpen.value = false;
 	} catch (error) {
 		actionError.value = error.message;
 	} finally {
@@ -220,6 +264,14 @@ onMounted(loadPage);
 							<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:opacity-60 dark:text-slate-100 dark:hover:bg-slate-800" :disabled="Boolean(connectingProvider)" @click="connectOneDrive">
 								<IconLinkPlus :size="18" :stroke="2" />
 								<span>{{ connectingProvider === 'onedrive' ? 'Menghubungkan OneDrive...' : 'OneDrive' }}</span>
+							</button>
+							<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:opacity-60 dark:text-slate-100 dark:hover:bg-slate-800" :disabled="Boolean(connectingProvider)" @click="connectDropbox">
+								<IconBrandDropbox :size="18" :stroke="2" />
+								<span>{{ connectingProvider === 'dropbox' ? 'Menghubungkan Dropbox...' : 'Dropbox' }}</span>
+							</button>
+							<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:opacity-60 dark:text-slate-100 dark:hover:bg-slate-800" :disabled="Boolean(connectingProvider)" @click="openMegaModal">
+								<IconCloud :size="18" :stroke="2" />
+								<span>{{ connectingProvider === 'mega' ? 'Menghubungkan MEGA...' : 'MEGA' }}</span>
 							</button>
 						</div>
 					</div>
@@ -304,6 +356,8 @@ onMounted(loadPage);
 			<div v-if="!accounts.length && !isLoading" class="rounded-[24px] border border-dashed border-[#dadce0] bg-white p-6 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
 					Belum ada akun terhubung.
 			</div>
+
+			<MegaConnectModal v-if="isMegaModalOpen" :is-connecting="connectingProvider === 'mega'" @close="closeMegaModal" @connect="connectMega" />
 		</div>
 	</DriveShell>
 </template>

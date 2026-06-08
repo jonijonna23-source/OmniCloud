@@ -11,6 +11,12 @@ import {
 	completeOneDriveAccountLink,
 	getOneDriveIntegrationStatus,
 } from '../services/oneDriveOAuthService.js';
+import {
+	createDropboxAuthorizationRequest,
+	completeDropboxAccountLink,
+	getDropboxIntegrationStatus,
+} from '../services/dropboxOAuthService.js';
+import { connectMegaAccount, getMegaIntegrationStatus } from '../services/megaAccountService.js';
 import { clearFilesForAccount } from '../services/fileService.js';
 
 const router = Router();
@@ -32,6 +38,14 @@ router.get('/accounts/onedrive/status', (_req, res) => {
 	res.json({ data: getOneDriveIntegrationStatus() });
 });
 
+router.get('/accounts/dropbox/status', (_req, res) => {
+	res.json({ data: getDropboxIntegrationStatus() });
+});
+
+router.get('/accounts/mega/status', (_req, res) => {
+	res.json({ data: getMegaIntegrationStatus() });
+});
+
 router.get('/accounts/google/connect', (_req, res, next) => {
 	try {
 		const data = createGoogleAuthorizationRequest();
@@ -44,6 +58,24 @@ router.get('/accounts/google/connect', (_req, res, next) => {
 router.get('/accounts/onedrive/connect', (_req, res, next) => {
 	try {
 		const data = createOneDriveAuthorizationRequest();
+		res.json({ data });
+	} catch (error) {
+		next(error);
+	}
+});
+
+router.get('/accounts/dropbox/connect', (_req, res, next) => {
+	try {
+		const data = createDropboxAuthorizationRequest();
+		res.json({ data });
+	} catch (error) {
+		next(error);
+	}
+});
+
+router.post('/accounts/mega/connect', async (req, res, next) => {
+	try {
+		const data = await connectMegaAccount(req.body || {});
 		res.json({ data });
 	} catch (error) {
 		next(error);
@@ -89,6 +121,28 @@ router.get('/accounts/onedrive/callback', async (req, res) => {
 		return res.redirect(frontendUrl.toString());
 	} catch (error) {
 		frontendUrl.searchParams.set('onedrive', 'error');
+		frontendUrl.searchParams.set('message', error.message);
+		return res.redirect(frontendUrl.toString());
+	}
+});
+
+router.get('/accounts/dropbox/callback', async (req, res) => {
+	const frontendUrl = new URL(env.frontendUrl);
+
+	try {
+		const { code, state, error, error_description } = req.query;
+
+		if (error) {
+			frontendUrl.searchParams.set('dropbox', 'error');
+			frontendUrl.searchParams.set('message', String(error_description || error));
+			return res.redirect(frontendUrl.toString());
+		}
+
+		await completeDropboxAccountLink({ code: String(code || ''), state: String(state || '') });
+		frontendUrl.searchParams.set('dropbox', 'connected');
+		return res.redirect(frontendUrl.toString());
+	} catch (error) {
+		frontendUrl.searchParams.set('dropbox', 'error');
 		frontendUrl.searchParams.set('message', error.message);
 		return res.redirect(frontendUrl.toString());
 	}

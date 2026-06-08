@@ -1,12 +1,11 @@
 # OmniCloud
 
-OmniCloud is a cloud-drive aggregation app that provides a Google Drive-inspired interface on top of multiple storage providers. It currently focuses on a real Google Drive integration, while the architecture is prepared for additional providers such as OneDrive and S3-compatible storage.
-
-This repository is based on the system blueprint in `blueprint.md` and is implemented as a small monorepo with a Vue frontend and a Node.js backend.
+OmniCloud is a cloud-drive aggregation app that provides a Google Drive-inspired interface on top of multiple storage providers. It supports real provider connections through a shared adapter architecture.
 
 ## Highlights
 
-- Real Google Drive account connection via OAuth
+- Real cloud account connections via provider-specific authentication
+- Encrypted local storage for provider tokens, sessions, and credentials
 - Unified file browser with virtual paths
 - Google Drive-like `Home` and `My Drive` experience
 - Folder creation, rename, delete, file details, and download
@@ -22,9 +21,10 @@ This repository is based on the system blueprint in `blueprint.md` and is implem
 | Provider | Status |
 | --- | --- |
 | Google Drive | Implemented and actively used |
-| OneDrive | Adapter placeholder / partial groundwork |
+| OneDrive | Implemented with Microsoft Graph |
+| Dropbox | Implemented with OAuth and Dropbox file APIs |
+| MEGA | Implemented with MEGA login and file APIs |
 | S3-compatible | Basic adapter groundwork |
-| Dropbox / MEGA | Not implemented yet |
 
 ## Monorepo structure
 
@@ -54,7 +54,7 @@ OmniCloud/
 - Express
 - WebSocket (`ws`)
 - SQLite via `better-sqlite3`
-- Google Drive API via `googleapis`
+- Provider API integrations and SDKs
 - `node-cron` for background sync
 
 ## How it works
@@ -72,7 +72,7 @@ The goal is to let users browse a unified virtual file tree while still working 
 ## Features
 
 ### Account connection
-- Connect a real Google Drive account
+- Connect real cloud provider accounts
 - Persist linked cloud account metadata locally
 - Track quota usage per account
 
@@ -103,7 +103,7 @@ Before running the project, make sure you have:
 
 - Node.js 20+ recommended
 - npm
-- A Google Cloud OAuth client configuration file named `credentials.json`
+- Provider credentials or account access as needed
 
 ## Setup
 
@@ -128,21 +128,23 @@ PORT=8787
 CORS_ORIGIN=http://localhost:5173
 SYNC_INTERVAL_MINUTES=5
 OMNICLOUD_SECRET_HALF=replace-this-with-random-half-key
-GOOGLE_CREDENTIALS_PATH=./credentials.json
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:8787/api/accounts/google/callback
+ONEDRIVE_CLIENT_ID=
+ONEDRIVE_CLIENT_SECRET=
+ONEDRIVE_TENANT_ID=common
+ONEDRIVE_REDIRECT_URI=http://localhost:8787/api/accounts/onedrive/callback
+DROPBOX_CLIENT_ID=
+DROPBOX_CLIENT_SECRET=
+DROPBOX_REDIRECT_URI=http://localhost:8787/api/accounts/dropbox/callback
 ```
 
-### 3. Add Google credentials
+### 3. Configure provider credentials
 
-Place your Google OAuth client file here:
+Follow the detailed provider guide:
 
-- `services/api/credentials.json`
-
-Important notes:
-
-- the app expects a Google OAuth client config file from Google Cloud,
-- the redirect URI in Google Cloud should match `GOOGLE_REDIRECT_URI`,
-- `credentials.json` should never be committed to source control.
+- [`docs/provider-setup.md`](docs/provider-setup.md)
 
 ## Running the project
 
@@ -182,7 +184,7 @@ Available commands in the root `package.json`:
 
 ### Accounts
 - `GET /api/accounts`
-- Google account connect/callback routes are available under `/api/accounts/...`
+- Provider connect/status routes are available under `/api/accounts/...`
 
 ### Files
 - `GET /api/files?path=/`
@@ -201,20 +203,17 @@ Available commands in the root `package.json`:
 
 - The local database is stored in `services/api/omnicloud.db`.
 - Cloud metadata is mirrored locally and refreshed after relevant operations.
-- The current implementation is centered on Google Drive.
 - Multi-provider pooling is not fully completed yet.
-- Move operations and broader provider parity are still future work.
+- Move operations and broader provider expansion are still future work.
 
 ## Security notes
 
-- Do not commit `.env`, `credentials.json`, or local database files.
-- Google OAuth credentials and tokens are sensitive.
-- Review your Google Cloud OAuth consent configuration before using this project with real accounts.
+- Do not commit `.env` or local database files.
+- OAuth credentials, refresh tokens, provider credentials, and local database files are sensitive.
+- Review your provider app consent configuration before using this project with real accounts.
 
 ## Roadmap
 
-- Complete OneDrive real integration
-- Add more providers such as Dropbox and MEGA
 - Improve unified storage pooling logic
 - Add move operations across the virtual file tree
 - Harden multi-account production readiness
@@ -222,6 +221,7 @@ Available commands in the root `package.json`:
 ## Related files
 
 - `blueprint.md` — original architecture and system design
+- `docs/provider-setup.md` — detailed credential setup for supported providers
 - `apps/web/README.md` — frontend template/readme source
 - `services/api/README.md` — backend-specific short readme
 

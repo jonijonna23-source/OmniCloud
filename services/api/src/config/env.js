@@ -28,6 +28,10 @@ export const env = {
 	onedriveTenantId: process.env.ONEDRIVE_TENANT_ID || 'common',
 	onedriveRedirectUri:
 		process.env.ONEDRIVE_REDIRECT_URI || 'http://localhost:8787/api/accounts/onedrive/callback',
+	dropboxClientId: process.env.DROPBOX_CLIENT_ID || '',
+	dropboxClientSecret: process.env.DROPBOX_CLIENT_SECRET || '',
+	dropboxRedirectUri:
+		process.env.DROPBOX_REDIRECT_URI || 'http://localhost:8787/api/accounts/dropbox/callback',
 };
 
 export function redactEnv() {
@@ -41,5 +45,7 @@ export function redactEnv() {
 		onedriveClientId: env.onedriveClientId ? '[configured]' : '[missing]',
 		onedriveTenantId: env.onedriveTenantId,
 		onedriveRedirectUri: env.onedriveRedirectUri,
+		dropboxClientId: env.dropboxClientId ? '[configured]' : '[missing]',
+		dropboxRedirectUri: env.dropboxRedirectUri,
 	};
 }
