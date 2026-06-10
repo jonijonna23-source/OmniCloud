@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import MyDriveView from '../views/MyDriveView.vue';
+import StarredView from '../views/StarredView.vue';
 import QuotaView from '../views/QuotaView.vue';
 
 const router = createRouter({
@@ -15,6 +16,11 @@ const router = createRouter({
 			path: '/my-drive',
 			name: 'my-drive',
 			component: MyDriveView,
+		},
+		{
+			path: '/starred',
+			name: 'starred',
+			component: StarredView,
 		},
 		{
 			path: '/quota',

@@ -23,6 +23,7 @@ function buildBreadcrumbs(currentPath) {
 export const useFileTreeStore = defineStore('fileTree', {
 	state: () => ({
 		currentPath: '/',
+		pendingPath: null,
 		files: [],
 		filteredFiles: [],
 		breadcrumbs: [{ label: 'Root', path: '/' }],

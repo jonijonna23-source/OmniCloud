@@ -1,46 +1,9 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import {
-	IconChevronRight,
-	IconChevronDown,
-	IconChevronUp,
-	IconCheck,
-	IconEdit,
-	IconEye,
-	IconDownload,
-	IconFileDescription,
-	IconFileText,
-	IconFileTypePdf,
-	IconFileZip,
-	IconFolder,
-	IconPhoto,
-	IconMusic,
-	IconPlayerPlay,
-	IconTrash,
-	IconVideo,
-	IconInfoCircle,
-	IconCloud,
-	IconCloudFilled,
-	IconLayoutGrid,
-	IconList,
-	IconSearch,
-	IconStar,
-	IconStarFilled,
-	IconX,
-	IconArchiveFilled,
-	IconFileDescriptionFilled,
-	IconFileFilled,
-	IconFileMusicFilled,
-	IconFileTextFilled,
-	IconFolderFilled,
-	IconLayoutGridFilled,
-	IconListDetailsFilled,
-	IconPhotoFilled,
-	IconVideoFilled,
-} from '@tabler/icons-vue';
+import { IconChevronDown, IconChevronUp, IconCheck, IconDownload, IconEdit, IconEye, IconFileDescription, IconFileText, IconFileTypePdf, IconFileZip, IconFolder, IconPhoto, IconMusic, IconPlayerPlay, IconStar, IconStarFilled, IconTrash, IconVideo, IconInfoCircle, IconCloud, IconCloudFilled, IconLayoutGrid, IconLayoutGridFilled, IconList, IconListDetailsFilled, IconSearch, IconX, IconArchiveFilled, IconFileDescriptionFilled, IconFileFilled, IconFileMusicFilled, IconFileTextFilled, IconFolderFilled, IconPhotoFilled, IconVideoFilled, } from '@tabler/icons-vue';
 import dropboxLogo from '../assets/dropbox.svg';
 import googleDriveLogo from '../assets/google-drive.svg';
 import megaLogo from '../assets/mega.svg';
@@ -53,53 +16,83 @@ import { useUploadQueueStore } from '../stores/uploadQueue';
 import { api } from '../services/api';
 
 const { t } = useI18n();
-
-const route = useRoute();
+const router = useRouter();
 const fileTreeStore = useFileTreeStore();
 const uploadQueueStore = useUploadQueueStore();
-const { currentPath, filteredFiles, breadcrumbs, searchTerm, isLoading } = storeToRefs(fileTreeStore);
 const { uploads, totalProgress } = storeToRefs(uploadQueueStore);
-
-const isDragActive = ref(false);
-const dragDepth = ref(0);
-const fileInputRef = ref(null);
-const folderInputRef = ref(null);
-const actionError = ref('');
-const contextMenu = ref({ visible: false, x: 0, y: 0, file: null });
-const contextMenuRef = ref(null);
-const detailsFile = ref(null);
-const isDetailsOpen = ref(false);
-const previewFile = ref(null);
-const isPreviewOpen = ref(false);
-const isPreviewLoading = ref(false);
+const loading = ref(false);
+const errorMessage = ref('');
+const searchTerm = ref('');
 const isGridView = ref(false);
+const sortBy = ref('updated_at');
+const sortDirection = ref('desc');
 const activeFilterMenu = ref(null);
 const selectedTypeFilter = ref('all');
 const selectedOwnerFilter = ref('all');
 const selectedUpdatedFilter = ref('all');
 const selectedFileIds = ref(new Set());
 const lastSelectedFileId = ref(null);
-const lastObservedSyncAt = ref('');
-let healthPollTimer = null;
+const contextMenu = ref({ visible: false, x: 0, y: 0, file: null });
+const detailsFile = ref(null);
+const isDetailsOpen = ref(false);
+const previewFile = ref(null);
+const isPreviewOpen = ref(false);
+const isPreviewLoading = ref(false);
+const contextMenuRef = ref(null);
+const files = ref([]);
+let refreshTimer = null;
 
-const sortBy = ref('updated_at');
-const sortDirection = ref('desc');
+const filteredFiles = computed(() => files.value.filter((file) => {
+	const query = searchTerm.value.trim().toLowerCase();
+	if (query) {
+		const matchesQuery = [file.file_name, file.email, file.provider, file.virtual_path]
+			.filter(Boolean)
+			.some((value) => String(value).toLowerCase().includes(query));
+		if (!matchesQuery) return false;
+	}
+	const typeMatches = selectedTypeFilter.value === 'all' || getFileCategory(file) === selectedTypeFilter.value;
+	const ownerMatches = selectedOwnerFilter.value === 'all' || file.email === selectedOwnerFilter.value;
+	const updatedMatches = selectedUpdatedFilter.value === 'all' || matchesUpdatedFilter(file.updated_at, selectedUpdatedFilter.value);
+	return typeMatches && ownerMatches && updatedMatches;
+}));
 
-const folders = computed(() => filteredFiles.value.filter((file) => file.is_folder));
-
-const suggestedFolders = computed(() => folders.value.slice(0, 4));
+const sortedFiles = computed(() => {
+	const items = [...filteredFiles.value];
+	const direction = sortDirection.value === 'asc' ? 1 : -1;
+	return items.sort((left, right) => {
+		let leftValue;
+		let rightValue;
+		switch (sortBy.value) {
+			case 'file_name':
+				leftValue = (left.file_name || '').toLowerCase();
+				rightValue = (right.file_name || '').toLowerCase();
+				break;
+			case 'email':
+				leftValue = (left.email || '').toLowerCase();
+				rightValue = (right.email || '').toLowerCase();
+				break;
+			case 'size':
+				leftValue = Number(left.size || 0);
+				rightValue = Number(right.size || 0);
+				break;
+			default:
+				leftValue = new Date(left.updated_at || 0).getTime();
+				rightValue = new Date(right.updated_at || 0).getTime();
+				break;
+		}
+		if (leftValue < rightValue) return -1 * direction;
+		if (leftValue > rightValue) return 1 * direction;
+		return 0;
+	});
+});
 
 const selectedFiles = computed(() => sortedFiles.value.filter((file) => selectedFileIds.value.has(file.id)));
-
 const selectedCount = computed(() => selectedFiles.value.length);
-
 const primarySelectedFile = computed(() => selectedFiles.value[0] || null);
-
 const canPreviewSelection = computed(() => selectedCount.value === 1 && canPreviewFile(primarySelectedFile.value));
-
-const canRenameSelection = computed(() => selectedCount.value === 1);
-
 const canDownloadSelection = computed(() => selectedFiles.value.some((file) => !file.is_folder));
+const canRenameSelection = computed(() => selectedCount.value === 1);
+const canUnstarSelection = computed(() => selectedFiles.value.length > 0 && selectedFiles.value.every((file) => file.capabilities?.starred));
 
 const canToggleStarSelection = computed(() => {
 	if (selectedCount.value !== 1) return false;
@@ -111,89 +104,75 @@ const isPrimarySelectedStarred = computed(() => Boolean(primarySelectedFile.valu
 
 const ownerOptions = computed(() => {
 	const ownerMap = new Map();
-
-	filteredFiles.value.forEach((file) => {
+	files.value.forEach((file) => {
 		if (!file.email || ownerMap.has(file.email)) return;
 		ownerMap.set(file.email, {
 			email: file.email,
-			provider: file.provider || null,
+			provider: file.provider || null
 		});
 	});
-
-	return [...ownerMap.values()].sort((left, right) => left.email.localeCompare(right.email, 'id'));
+	return [...ownerMap.values()].sort((a, b) => a.email.localeCompare(b.email, 'id'));
 });
 
-const typeOptions = computed(() => [
-	{ value: 'all', label: t('filters.allTypes') },
-	{ value: 'folder', label: t('filters.folder') },
-	{ value: 'document', label: t('filters.document') },
-	{ value: 'image', label: t('filters.image') },
-	{ value: 'pdf', label: t('filters.pdf') },
-	{ value: 'video', label: t('filters.video') },
-	{ value: 'audio', label: t('filters.audio') },
-	{ value: 'archive', label: t('filters.archive') },
+const typeOptions = computed(() => [{
+	value: 'all',
+	label: t('filters.allTypes')
+},
+{
+	value: 'folder',
+	label: t('filters.folder')
+},
+{
+	value: 'document',
+	label: t('filters.document')
+},
+{
+	value: 'image',
+	label: t('filters.image')
+},
+{
+	value: 'pdf',
+	label: t('filters.pdf')
+},
+{
+	value: 'video',
+	label: t('filters.video')
+},
+{
+	value: 'audio',
+	label: t('filters.audio')
+},
+{
+	value: 'archive',
+	label: t('filters.archive')
+},
 ]);
 
-const updatedOptions = computed(() => [
-	{ value: 'all', label: t('filters.allTimes') },
-	{ value: 'today', label: t('filters.today') },
-	{ value: 'last7', label: t('filters.last7') },
-	{ value: 'last30', label: t('filters.last30') },
-	{ value: 'thisYear', label: t('filters.thisYear') },
-	{ value: 'lastYear', label: t('filters.lastYear') },
+const updatedOptions = computed(() => [{
+	value: 'all',
+	label: t('filters.allTimes')
+},
+{
+	value: 'today',
+	label: t('filters.today')
+},
+{
+	value: 'last7',
+	label: t('filters.last7')
+},
+{
+	value: 'last30',
+	label: t('filters.last30')
+},
+{
+	value: 'thisYear',
+	label: t('filters.thisYear')
+},
+{
+	value: 'lastYear',
+	label: t('filters.lastYear')
+},
 ]);
-
-const visibleFiles = computed(() => {
-	return filteredFiles.value.filter((file) => {
-		const typeMatches = selectedTypeFilter.value === 'all' || getFileCategory(file) === selectedTypeFilter.value;
-		const ownerMatches = selectedOwnerFilter.value === 'all' || file.email === selectedOwnerFilter.value;
-		const updatedMatches = selectedUpdatedFilter.value === 'all' || matchesUpdatedFilter(file.updated_at, selectedUpdatedFilter.value);
-		return typeMatches && ownerMatches && updatedMatches;
-	});
-});
-
-const sortedFiles = computed(() => {
-	const items = [...visibleFiles.value];
-	const direction = sortDirection.value === 'asc' ? 1 : -1;
-
-	return items.sort((left, right) => {
-		if (left.is_folder !== right.is_folder) {
-			return left.is_folder ? -1 : 1;
-		}
-
-		let leftValue;
-		let rightValue;
-
-		switch (sortBy.value) {
-			case 'file_name':
-				leftValue = (left.display_name || left.file_name || '').toLowerCase();
-				rightValue = (right.display_name || right.file_name || '').toLowerCase();
-				break;
-			case 'email':
-				leftValue = (left.email || '').toLowerCase();
-				rightValue = (right.email || '').toLowerCase();
-				break;
-			case 'size':
-				leftValue = Number(left.size || 0);
-				rightValue = Number(right.size || 0);
-				break;
-			case 'updated_at':
-			default:
-				leftValue = new Date(left.updated_at || 0).getTime();
-				rightValue = new Date(right.updated_at || 0).getTime();
-				break;
-		}
-
-		if (leftValue < rightValue) return -1 * direction;
-		if (leftValue > rightValue) return 1 * direction;
-
-		const leftName = (left.display_name || left.file_name || '').toLowerCase();
-		const rightName = (right.display_name || right.file_name || '').toLowerCase();
-		if (leftName < rightName) return -1;
-		if (leftName > rightName) return 1;
-		return 0;
-	});
-});
 
 function formatBytes(value) {
 	if (!value) return '—';
@@ -212,7 +191,7 @@ function formatDate(value) {
 	return new Intl.DateTimeFormat('id-ID', {
 		day: 'numeric',
 		month: 'short',
-		year: 'numeric',
+		year: 'numeric'
 	}).format(new Date(value));
 }
 
@@ -233,7 +212,7 @@ function providerIcon(provider) {
 }
 
 function getFileExtension(file) {
-	const source = file.display_name || file.file_name || '';
+	const source = file.file_name || '';
 	const parts = source.toLowerCase().split('.');
 	return parts.length > 1 ? parts.at(-1) : '';
 }
@@ -242,39 +221,16 @@ function getFileCategory(file) {
 	if (file.is_folder) return 'folder';
 	const mimeType = (file.mime_type || file.mimeType || '').toLowerCase();
 	const extension = getFileExtension(file);
-
 	if (mimeType === 'application/pdf' || extension === 'pdf') return 'pdf';
 	if (mimeType.startsWith('image/')) return 'image';
 	if (mimeType.startsWith('video/')) return 'video';
 	if (mimeType.startsWith('audio/')) return 'audio';
-	if (
-		mimeType.includes('zip') ||
-		mimeType.includes('rar') ||
-		mimeType.includes('7z') ||
-		mimeType.includes('tar') ||
-		['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)
-	) {
-		return 'archive';
-	}
-	if (
-		mimeType.startsWith('text/') ||
-		mimeType.includes('document') ||
-		mimeType.includes('word') ||
-		mimeType.includes('sheet') ||
-		mimeType.includes('excel') ||
-		mimeType.includes('presentation') ||
-		mimeType.includes('powerpoint') ||
-		mimeType === 'application/json'
-	) {
-		return 'document';
-	}
-
+	if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z') || mimeType.includes('tar') || ['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)) return 'archive';
 	return 'document';
 }
 
 function getFileIcon(file, filled = false) {
 	if (file.is_folder) return filled ? IconFolderFilled : IconFolder;
-
 	switch (getFileCategory(file)) {
 		case 'image':
 			return filled ? IconPhotoFilled : IconPhoto;
@@ -286,7 +242,6 @@ function getFileIcon(file, filled = false) {
 			return filled ? IconFileMusicFilled : IconMusic;
 		case 'archive':
 			return filled ? IconArchiveFilled : IconFileZip;
-		case 'document':
 		default:
 			return filled ? IconFileTextFilled : IconFileText;
 	}
@@ -308,7 +263,6 @@ function getTypeFilterIcon(value, filled = false) {
 			return filled ? IconArchiveFilled : IconFileZip;
 		case 'document':
 			return filled ? IconFileTextFilled : IconFileText;
-		case 'all':
 		default:
 			return filled ? IconFileDescriptionFilled : IconFileDescription;
 	}
@@ -332,7 +286,6 @@ function matchesUpdatedFilter(value, filter) {
 	const thisYearStart = new Date(now.getFullYear(), 0, 1);
 	const lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
 	const lastYearEnd = new Date(now.getFullYear(), 0, 1);
-
 	switch (filter) {
 		case 'today':
 			return fileDate >= todayStart;
@@ -373,10 +326,6 @@ function isFilterActive(type) {
 	return false;
 }
 
-function toggleViewMode(mode) {
-	isGridView.value = mode === 'grid';
-}
-
 function renderOwnerLabel(value) {
 	return value === 'all' ? t('filters.allOwners') : value;
 }
@@ -384,8 +333,19 @@ function renderOwnerLabel(value) {
 function openFolder(file) {
 	if (!file.is_folder) return;
 	clearSelection();
-	const nextPath = `${currentPath.value === '/' ? '' : currentPath.value}${file.file_name}/`;
-	fileTreeStore.navigate(nextPath.startsWith('/') ? nextPath : `/${nextPath}`);
+
+	const parent = file.virtual_path || '/';
+	const inside = `${parent === '/' ? '' : parent}${file.file_name}/`;
+	const targetPath = inside.startsWith('/') ? inside : `/${inside}`;
+	fileTreeStore.pendingPath = targetPath;
+	router.push({ path: '/my-drive' });
+}
+
+function openSelectedItem() {
+	const file = primarySelectedFile.value || contextMenu.value.file;
+	closeContextMenu();
+	if (!file?.is_folder) return;
+	openFolder(file);
 }
 
 function replaceSelection(file) {
@@ -394,50 +354,38 @@ function replaceSelection(file) {
 }
 
 function toggleSelection(file) {
-	const nextSelection = new Set(selectedFileIds.value);
-	if (nextSelection.has(file.id)) {
-		nextSelection.delete(file.id);
-	} else {
-		nextSelection.add(file.id);
-	}
-	selectedFileIds.value = nextSelection;
+	const next = new Set(selectedFileIds.value);
+	if (next.has(file.id)) next.delete(file.id);
+	else next.add(file.id);
+	selectedFileIds.value = next;
 	lastSelectedFileId.value = file.id;
 }
 
 function selectRange(file) {
-	const files = sortedFiles.value;
-	const currentIndex = files.findIndex((item) => item.id === file.id);
-	const anchorIndex = files.findIndex((item) => item.id === lastSelectedFileId.value);
-
+	const items = sortedFiles.value;
+	const currentIndex = items.findIndex((item) => item.id === file.id);
+	const anchorIndex = items.findIndex((item) => item.id === lastSelectedFileId.value);
 	if (currentIndex === -1 || anchorIndex === -1) {
 		replaceSelection(file);
 		return;
 	}
-
 	const [start, end] = currentIndex < anchorIndex ? [currentIndex, anchorIndex] : [anchorIndex, currentIndex];
-	selectedFileIds.value = new Set(files.slice(start, end + 1).map((item) => item.id));
+	selectedFileIds.value = new Set(items.slice(start, end + 1).map((item) => item.id));
 }
 
 function selectItem(event, file) {
 	event.preventDefault();
 	event.stopPropagation();
 	closeContextMenu();
-
 	if (event.shiftKey) {
 		selectRange(file);
 		return;
 	}
-
 	if (event.ctrlKey || event.metaKey) {
 		toggleSelection(file);
 		return;
 	}
-
 	replaceSelection(file);
-}
-
-function isSelected(file) {
-	return selectedFileIds.value.has(file.id);
 }
 
 function clearSelection() {
@@ -445,32 +393,55 @@ function clearSelection() {
 	lastSelectedFileId.value = null;
 }
 
+function isSelected(file) {
+	return selectedFileIds.value.has(file.id);
+}
+
 function openItemOnDoubleClick(file) {
 	if (file.is_folder) {
 		openFolder(file);
 		return;
 	}
-
 	if (canPreviewFile(file)) {
 		openPreview(file);
 	}
 }
 
-function closeContextMenu() {
-	contextMenu.value = { visible: false, x: 0, y: 0, file: null };
+function sortIndicator(field) {
+	if (sortBy.value !== field) return null;
+	return sortDirection.value === 'asc' ? IconChevronUp : IconChevronDown;
 }
 
+function toggleSort(field) {
+	if (sortBy.value === field) {
+		sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+		return;
+	}
+	sortBy.value = field;
+	sortDirection.value = field === 'file_name' || field === 'email' ? 'asc' : 'desc';
+}
+
+function toggleViewMode(mode) {
+	isGridView.value = mode === 'grid';
+}
+
+function closeContextMenu() {
+	contextMenu.value = {
+		visible: false,
+		x: 0,
+		y: 0,
+		file: null
+	};
+}
 async function openContextMenu(event, file) {
 	event.preventDefault();
 	event.stopPropagation();
-	if (!selectedFileIds.value.has(file.id)) {
-		replaceSelection(file);
-	}
+	if (!selectedFileIds.value.has(file.id)) replaceSelection(file);
 	contextMenu.value = {
 		visible: true,
 		x: event.clientX,
 		y: event.clientY,
-		file,
+		file
 	};
 
 	await nextTick();
@@ -487,15 +458,23 @@ async function openContextMenu(event, file) {
 	};
 }
 
-function openSelectedItem() {
-	const file = primarySelectedFile.value || contextMenu.value.file;
-	closeContextMenu();
-	if (!file?.is_folder) return;
-	openFolder(file);
-}
-
 function getActionFiles(fallbackFile = contextMenu.value.file) {
 	return selectedFiles.value.length ? selectedFiles.value : (fallbackFile ? [fallbackFile] : []);
+}
+
+function canPreviewFile(file) {
+	return Boolean(file && !file.is_folder && ['image', 'video', 'audio', 'pdf', 'document'].includes(getFileCategory(file)));
+}
+async function openPreview(file = contextMenu.value.file) {
+	if (!canPreviewFile(file)) return;
+	closeContextMenu();
+	isPreviewLoading.value = true;
+	previewFile.value = {
+		...file,
+		previewType: getFileCategory(file),
+		previewUrl: api.previewUrl(file.id)
+	};
+	isPreviewOpen.value = true;
 }
 
 function closeDetails() {
@@ -509,321 +488,97 @@ function closePreview() {
 	isPreviewLoading.value = false;
 }
 
-function resetFileInput(inputRef) {
-	if (inputRef.value) {
-		inputRef.value.value = '';
-	}
-}
-
-async function refreshCurrentFolder() {
-	await fileTreeStore.loadFiles(currentPath.value);
-}
-
-async function checkSyncStatus() {
-	if (document.visibilityState !== 'visible') {
-		return;
-	}
-
-	try {
-		const { sync } = await api.getHealth();
-		const nextSyncAt = sync?.lastRunAt || '';
-
-		if (!lastObservedSyncAt.value) {
-			lastObservedSyncAt.value = nextSyncAt;
-			return;
-		}
-
-		if (nextSyncAt && nextSyncAt !== lastObservedSyncAt.value) {
-			lastObservedSyncAt.value = nextSyncAt;
-			await refreshCurrentFolder();
-		}
-	} catch {
-		// Ignore lightweight sync polling failures.
-	}
-}
-
-function startHealthPolling() {
-	stopHealthPolling();
-	healthPollTimer = window.setInterval(() => {
-		checkSyncStatus();
-	}, 20000);
-}
-
-function stopHealthPolling() {
-	if (healthPollTimer) {
-		window.clearInterval(healthPollTimer);
-		healthPollTimer = null;
-	}
-}
-
-async function handleUploads(entries) {
-	actionError.value = '';
-
-	if (!entries.length) return;
-
-	try {
-		await uploadQueueStore.uploadFiles(entries, currentPath.value, refreshCurrentFolder);
-		await refreshCurrentFolder();
-	} catch (error) {
-		actionError.value = error.message;
-	}
-}
-
-function openFilePicker() {
-	resetFileInput(fileInputRef);
-	fileInputRef.value?.click();
-}
-
-function openFolderPicker() {
-	resetFileInput(folderInputRef);
-	folderInputRef.value?.click();
-}
-
-async function onFileInputChange(event) {
-	const files = Array.from(event.target.files || []);
-	await handleUploads(files);
-}
-
-async function onFolderInputChange(event) {
-	const entries = Array.from(event.target.files || []).map((file) => ({
-		file,
-		relativePath: file.webkitRelativePath || file.name,
-	}));
-	await handleUploads(entries);
-}
-
-async function readDirectoryEntry(entry, prefix = '') {
-	const reader = entry.createReader();
-	const children = await new Promise((resolve, reject) => {
-		reader.readEntries(resolve, reject);
-	});
-
-	const nested = await Promise.all(
-		children.map((child) => readDroppedEntry(child, prefix ? `${prefix}/${entry.name}` : entry.name)),
-	);
-
-	return nested.flat();
-}
-
-async function readFileEntry(entry, prefix = '') {
-	return new Promise((resolve, reject) => {
-		entry.file(
-			(file) => {
-				resolve([
-					{
-						file,
-						relativePath: prefix ? `${prefix}/${file.name}` : file.name,
-					},
-				]);
-			},
-			reject,
-		);
-	});
-}
-
-async function readDroppedEntry(entry, prefix = '') {
-	if (entry.isDirectory) {
-		return readDirectoryEntry(entry, prefix);
-	}
-
-	return readFileEntry(entry, prefix);
-}
-
-async function collectDroppedEntries(dataTransfer) {
-	const items = Array.from(dataTransfer.items || []);
-	const entries = items
-		.map((item) => item.webkitGetAsEntry?.())
-		.filter(Boolean);
-
-	if (!entries.length) {
-		return Array.from(dataTransfer.files || []);
-	}
-
-	const collected = await Promise.all(entries.map((entry) => readDroppedEntry(entry)));
-	return collected.flat();
-}
-
-function resetDragState() {
-	dragDepth.value = 0;
-	isDragActive.value = false;
-}
-
-function handleDragEnter() {
-	dragDepth.value += 1;
-	isDragActive.value = true;
-}
-
-function handleDragLeave(event) {
-	if (!event.currentTarget.contains(event.relatedTarget)) {
-		resetDragState();
-		return;
-	}
-
-	dragDepth.value = Math.max(0, dragDepth.value - 1);
-	if (dragDepth.value === 0) {
-		isDragActive.value = false;
-	}
-}
-
-async function handleDrop(event) {
-	resetDragState();
-	const entries = await collectDroppedEntries(event.dataTransfer);
-	await handleUploads(entries);
-}
-
-async function createNewFolder() {
-	const folderName = window.prompt(t('drive.newFolderName'));
-	if (!folderName?.trim()) return;
-
-	actionError.value = '';
-
-	try {
-		await uploadQueueStore.trackServerOperation(
-			{ type: 'create-folder', name: folderName.trim(), targetKind: 'folder' },
-			() => api.createFolder({
-				name: folderName.trim(),
-				virtual_path: currentPath.value,
-			}),
-		);
-		await refreshCurrentFolder();
-	} catch (error) {
-		actionError.value = error.message;
-	}
-}
-
-async function renameSelectedFile() {
-	const file = primarySelectedFile.value || contextMenu.value.file;
-	if (!file) return;
-
-	const nextName = window.prompt(t('drive.newNamePrompt'), file.file_name);
-	closeContextMenu();
-
-	if (!nextName?.trim() || nextName.trim() === file.file_name) return;
-
-	actionError.value = '';
-
-	try {
-		await uploadQueueStore.trackServerOperation(
-			{ type: 'rename', name: nextName.trim(), fromName: file.file_name, toName: nextName.trim(), targetKind: file.is_folder ? 'folder' : 'file' },
-			() => api.renameFile(file.id, { name: nextName.trim() }),
-		);
-		await refreshCurrentFolder();
-	} catch (error) {
-		actionError.value = error.message;
-	}
-}
-
-async function deleteSelectedFile() {
-	const files = getActionFiles();
-	if (!files.length) return;
-
-	const confirmed = window.confirm(files.length === 1 ? t('drive.deleteConfirm', { name: files[0].file_name }) : t('drive.deleteConfirm', { name: files.length + ' ' + t('common.items') }));
-	closeContextMenu();
-	if (!confirmed) return;
-
-	actionError.value = '';
-
-	try {
-		const targetKind = files.every((file) => file.is_folder) ? 'folder' : files.every((file) => !file.is_folder) ? 'file' : 'item';
-
-		if (files.length === 1) {
-			await uploadQueueStore.trackServerOperation(
-				{ type: 'delete', name: files[0].file_name, targetKind: files[0].is_folder ? 'folder' : 'file' },
-				() => api.deleteFile(files[0].id),
-			);
-		} else {
-			await uploadQueueStore.trackServerOperation(
-				{ type: 'delete', name: `${files.length} ${targetKind}`, batchTotal: files.length, targetKind },
-				() => api.deleteFiles(files.map((file) => file.id)),
-			);
-		}
-		clearSelection();
-		await refreshCurrentFolder();
-	} catch (error) {
-		actionError.value = error.message;
-	}
-}
-
-async function showSelectedFileDetails() {
-	const file = primarySelectedFile.value || contextMenu.value.file;
-	if (!file) return;
-
-	closeContextMenu();
-	actionError.value = '';
-
-	try {
-		const { data } = await api.getFileDetails(file.id);
-		detailsFile.value = data;
-		isDetailsOpen.value = true;
-	} catch (error) {
-		actionError.value = error.message;
-	}
-}
-
-function getPreviewType(file) {
-	if (!file || file.is_folder) return null;
-	const mimeType = file.mime_type || file.mimeType || '';
-
-	if (mimeType.startsWith('image/')) return 'image';
-	if (mimeType.startsWith('video/')) return 'video';
-	if (mimeType.startsWith('audio/')) return 'audio';
-	if (mimeType === 'application/pdf') return 'pdf';
-	if (mimeType.startsWith('text/') || mimeType === 'application/json') return 'document';
-
-	return null;
-}
-
-function canPreviewFile(file) {
-	return Boolean(getPreviewType(file));
-}
-
-async function openPreview(file = contextMenu.value.file) {
-	if (!canPreviewFile(file)) {
-		closeContextMenu();
-		actionError.value = 'Preview belum didukung untuk tipe file ini.';
-		return;
-	}
-
-	closeContextMenu();
-	actionError.value = '';
-	isPreviewLoading.value = true;
-	previewFile.value = {
-		...file,
-		previewType: getPreviewType(file),
-		previewUrl: api.previewUrl(file.id),
-	};
-	isPreviewOpen.value = true;
-}
-
 function handlePreviewLoaded() {
 	isPreviewLoading.value = false;
 }
 
 function handlePreviewFailed() {
 	isPreviewLoading.value = false;
-	actionError.value = t('drive.previewFailed');
+	errorMessage.value = t('preview.failed');
 }
 
-function toggleSort(field) {
-	if (sortBy.value === field) {
-		sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
-		return;
+async function refreshStarred() {
+	loading.value = true;
+	errorMessage.value = '';
+	try {
+		const {
+			data
+		} = await api.listStarredFiles();
+		files.value = Array.isArray(data) ? data : [];
+		selectedFileIds.value = new Set([...selectedFileIds.value].filter((id) => files.value.some((file) => file.id === id)));
+	} catch (error) {
+		errorMessage.value = error.message;
+	} finally {
+		loading.value = false;
 	}
-
-	sortBy.value = field;
-	sortDirection.value = field === 'file_name' || field === 'email' ? 'asc' : 'desc';
 }
 
-function sortIndicator(field) {
-	if (sortBy.value !== field) return null;
-	return sortDirection.value === 'asc' ? IconChevronUp : IconChevronDown;
+async function showSelectedFileDetails() {
+	const file = primarySelectedFile.value || contextMenu.value.file;
+	if (!file) return;
+	closeContextMenu();
+	errorMessage.value = '';
+	try {
+		const {
+			data
+		} = await api.getFileDetails(file.id);
+		detailsFile.value = data;
+		isDetailsOpen.value = true;
+	} catch (error) {
+		errorMessage.value = error.message;
+	}
+}
+
+async function renameSelectedFile() {
+	const file = primarySelectedFile.value || contextMenu.value.file;
+	if (!file) return;
+	const nextName = window.prompt(t('drive.newNamePrompt'), file.file_name);
+	closeContextMenu();
+	if (!nextName?.trim() || nextName.trim() === file.file_name) return;
+	errorMessage.value = '';
+	try {
+		await api.renameFile(file.id, {
+			name: nextName.trim()
+		});
+		await refreshStarred();
+	} catch (error) {
+		errorMessage.value = error.message;
+	}
+}
+
+async function deleteSelectedFile() {
+	const targets = getActionFiles();
+	if (!targets.length) return;
+	const confirmed = window.confirm(
+		targets.length === 1 ?
+			t('drive.deleteConfirm', {
+				name: targets[0].file_name
+			}) :
+			t('drive.deleteConfirm', {
+				name: targets.length + ' ' + t('common.items')
+			}),
+	);
+	closeContextMenu();
+	if (!confirmed) return;
+	errorMessage.value = '';
+	try {
+		if (targets.length === 1) {
+			await api.deleteFile(targets[0].id);
+		} else {
+			await api.deleteFiles(targets.map((f) => f.id));
+		}
+		clearSelection();
+		await refreshStarred();
+	} catch (error) {
+		errorMessage.value = error.message;
+	}
 }
 
 function triggerDownload(file) {
 	closeContextMenu();
 	if (file?.is_folder) return;
 	uploadQueueStore.downloadFile(file).catch((error) => {
-		actionError.value = error.message;
+		errorMessage.value = error.message;
 	});
 }
 
@@ -831,99 +586,61 @@ function downloadSelection() {
 	const downloadableFiles = getActionFiles().filter((file) => !file.is_folder);
 	closeContextMenu();
 	uploadQueueStore.downloadFiles(downloadableFiles).catch((error) => {
-		actionError.value = error.message;
+		errorMessage.value = error.message;
 	});
+}
+async function unstarSelection() {
+	const targets = [...selectedFiles.value].filter((file) => file.capabilities?.starred);
+	if (!targets.length) return;
+	await Promise.all(targets.map((file) => api.toggleStar(file.id, false)));
+	clearSelection();
+	await refreshStarred();
 }
 
 async function toggleSelectedFileStar() {
 	const file = primarySelectedFile.value || contextMenu.value.file;
 	if (!file || !file.capabilities?.starred) return;
-
 	const nextStarred = !Boolean(file.is_starred);
 	closeContextMenu();
-	actionError.value = '';
-
+	errorMessage.value = '';
 	try {
 		await api.toggleStar(file.id, nextStarred);
-		await refreshCurrentFolder();
+		await refreshStarred();
 	} catch (error) {
-		actionError.value = error.message;
+		errorMessage.value = error.message;
 	}
 }
 
 function handleGlobalPointer() {
+	if (contextMenu.value.visible) closeContextMenu();
 	activeFilterMenu.value = null;
-	if (contextMenu.value.visible) {
-		closeContextMenu();
-	}
-}
-
-function handleVisibilityChange() {
-	resetDragState();
-
-	if (document.visibilityState === 'visible') {
-		refreshCurrentFolder();
-		checkSyncStatus();
-	}
 }
 
 onMounted(() => {
-	const initialPath = fileTreeStore.pendingPath || '/';
-	fileTreeStore.pendingPath = null;
-	fileTreeStore.loadFiles(initialPath);
-	checkSyncStatus();
-	startHealthPolling();
+	refreshStarred();
+	refreshTimer = window.setInterval(refreshStarred, 30000);
 	window.addEventListener('click', handleGlobalPointer);
 	window.addEventListener('scroll', handleGlobalPointer, true);
-	window.addEventListener('dragend', resetDragState);
-	window.addEventListener('drop', resetDragState);
-	window.addEventListener('blur', resetDragState);
-	document.addEventListener('visibilitychange', handleVisibilityChange);
 });
 
 onBeforeUnmount(() => {
-	stopHealthPolling();
+	if (refreshTimer) window.clearInterval(refreshTimer);
 	window.removeEventListener('click', handleGlobalPointer);
 	window.removeEventListener('scroll', handleGlobalPointer, true);
-	window.removeEventListener('dragend', resetDragState);
-	window.removeEventListener('drop', resetDragState);
-	window.removeEventListener('blur', resetDragState);
-	document.removeEventListener('visibilitychange', handleVisibilityChange);
 });
 </script>
 
 <template>
-	<DriveShell current-section="drive" @new-folder="createNewFolder" @upload-files="openFilePicker" @upload-folder="openFolderPicker">
-		<div class="relative min-h-[calc(100vh-84px)] rounded-[24px] bg-white px-4 py-[18px] pb-5 text-[#202124] dark:bg-slate-800 dark:text-slate-100 sm:px-6" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragEnter" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
-			<input ref="fileInputRef" class="hidden" type="file" multiple @change="onFileInputChange" />
-			<input ref="folderInputRef" class="hidden" type="file" multiple webkitdirectory directory @change="onFolderInputChange" />
-
-			<div v-if="isDragActive" class="pointer-events-none absolute inset-4 z-20 grid place-items-center rounded-[24px] border-2 border-dashed border-[#1a73e8] bg-[#e8f0fe]/90 text-center dark:bg-slate-900/90">
-				<div>
-					<p class="text-lg font-semibold text-[#1a73e8]">Lepas file di sini untuk upload</p>
-					<p class="mt-2 text-sm text-[#5f6368] dark:text-slate-400">File dan folder akan diunggah ke lokasi Drive saat ini.</p>
-				</div>
-			</div>
-
+	<DriveShell current-section="starred">
+		<div class="relative min-h-[calc(100vh-84px)] rounded-[24px] bg-white px-4 py-[18px] pb-5 text-[#202124] dark:bg-slate-800 dark:text-slate-100 sm:px-6">
 			<div class="mb-2 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-				<nav aria-label="Breadcrumb" class="m-0 flex flex-wrap items-center gap-1 text-2xl font-normal text-[#202124] dark:text-slate-100">
-					<template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
-						<button type="button" class="max-w-[220px] truncate rounded-xl px-2 py-1 leading-tight transition hover:bg-[#f1f3f4] hover:text-[#1a73e8] dark:hover:bg-slate-700/70 dark:hover:text-sky-300" @click="fileTreeStore.navigate(crumb.path)">
-							{{ crumb.label === 'Root' ? 'Drive Saya' : crumb.label }}
-						</button>
-						<IconChevronRight v-if="index < breadcrumbs.length - 1" :size="18" :stroke="2" class="text-[#5f6368] dark:text-slate-400" />
-					</template>
-				</nav>
-
+				<h1 class="m-0 text-2xl font-normal text-[#202124] dark:text-slate-100">{{ t('nav.starred') }}</h1>
 				<div class="flex items-center gap-2">
 					<button type="button" class="grid size-9 place-items-center rounded-full transition" :class="!isGridView ? 'bg-[#e8f0fe] text-[#1a73e8] dark:bg-sky-500/15 dark:text-sky-300' : 'text-[#5f6368] hover:bg-black/5 dark:text-slate-400 dark:hover:bg-white/8'" @click="toggleViewMode('list')">
 						<component :is="!isGridView ? IconListDetailsFilled : IconList" :size="18" :stroke="!isGridView ? 0 : 2" />
 					</button>
 					<button type="button" class="grid size-9 place-items-center rounded-full transition" :class="isGridView ? 'bg-[#e8f0fe] text-[#1a73e8] dark:bg-sky-500/15 dark:text-sky-300' : 'text-[#5f6368] hover:bg-black/5 dark:text-slate-400 dark:hover:bg-white/8'" @click="toggleViewMode('grid')">
 						<component :is="isGridView ? IconLayoutGridFilled : IconLayoutGrid" :size="18" :stroke="isGridView ? 0 : 2" />
-					</button>
-					<button type="button" class="grid size-9 place-items-center rounded-full text-[#5f6368] hover:bg-black/5 dark:text-slate-400 dark:hover:bg-white/8">
-						<IconInfoCircle :size="18" :stroke="2" />
 					</button>
 				</div>
 			</div>
@@ -938,8 +655,7 @@ onBeforeUnmount(() => {
 					<div v-if="activeFilterMenu === 'type'" class="absolute right-0 top-full z-30 mt-2 min-w-[220px] overflow-hidden rounded-2xl border border-[#e0e3e7] bg-white p-2 shadow-[0_16px_40px_rgba(32,33,36,0.16)] dark:border-slate-700 dark:bg-slate-800">
 						<button v-for="option in typeOptions" :key="option.value" type="button" class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" @click="applyFilter('type', option.value)">
 							<span class="flex items-center gap-2">
-								<component :is="getTypeFilterIcon(option.value, selectedTypeFilter === option.value)" :size="16" :stroke="selectedTypeFilter === option.value ? 0 : 1.8" :class="selectedTypeFilter === option.value ? 'text-[#1a73e8] dark:text-sky-300' : 'text-[#5f6368] dark:text-slate-400'" />
-								<span>{{ option.label }}</span>
+								<component :is="getTypeFilterIcon(option.value, selectedTypeFilter === option.value)" :size="16" :stroke="selectedTypeFilter === option.value ? 0 : 1.8" :class="selectedTypeFilter === option.value ? 'text-[#1a73e8] dark:text-sky-300' : 'text-[#5f6368] dark:text-slate-400'" /><span>{{ option.label }}</span>
 							</span>
 							<IconCheck v-if="selectedTypeFilter === option.value" :size="16" :stroke="2" class="text-[#1a73e8] dark:text-sky-300" />
 						</button>
@@ -953,19 +669,14 @@ onBeforeUnmount(() => {
 					</button>
 					<div v-if="activeFilterMenu === 'owner'" class="absolute right-0 top-full z-30 mt-2 min-w-[260px] overflow-hidden rounded-2xl border border-[#e0e3e7] bg-white p-2 shadow-[0_16px_40px_rgba(32,33,36,0.16)] dark:border-slate-700 dark:bg-slate-800">
 						<button type="button" class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" @click="applyFilter('owner', 'all')">
-							<span class="flex min-w-0 items-center gap-2">
-								<span class="flex size-5 shrink-0 items-center justify-center">
+							<span class="flex min-w-0 items-center gap-2"><span class="flex size-5 shrink-0 items-center justify-center">
 									<component :is="selectedOwnerFilter === 'all' ? IconCloudFilled : IconCloud" :size="16" :stroke="selectedOwnerFilter === 'all' ? 0 : 1.8" :class="selectedOwnerFilter === 'all' ? 'text-[#1a73e8] dark:text-sky-300' : 'text-[#5f6368] dark:text-slate-400'" />
-								</span>
-								<span>{{ t('filters.allOwners') }}</span>
-							</span>
+								</span><span>{{ t('filters.allOwners') }}</span></span>
 							<IconCheck v-if="selectedOwnerFilter === 'all'" :size="16" :stroke="2" class="text-[#1a73e8] dark:text-sky-300" />
 						</button>
 						<button v-for="owner in ownerOptions" :key="owner.email" type="button" class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" @click="applyFilter('owner', owner.email)">
 							<span class="flex min-w-0 items-center gap-2">
-								<div v-if="providerIcon(owner.provider)" class="flex size-5 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900/70">
-									<img :src="providerIcon(owner.provider)" :alt="providerLabel(owner.provider)" class="size-3.5 object-contain" />
-								</div>
+								<div v-if="providerIcon(owner.provider)" class="flex size-5 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900/70"><img :src="providerIcon(owner.provider)" :alt="providerLabel(owner.provider)" class="size-3.5 object-contain" /></div>
 								<div v-else class="size-5 shrink-0"></div>
 								<span class="truncate">{{ owner.email }}</span>
 							</span>
@@ -988,20 +699,7 @@ onBeforeUnmount(() => {
 				</div>
 			</div>
 
-			<div v-if="suggestedFolders.length" class="mb-[18px]">
-				<div class="mb-3 flex items-center justify-between gap-3">
-					<h2 class="m-0 text-base font-medium text-[#202124] dark:text-slate-100">{{ t('suggestions.title') }}</h2>
-				</div>
-
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-					<button v-for="folder in suggestedFolders" :key="folder.id" type="button" class="group flex h-14 items-center gap-3 rounded-2xl border px-4 text-left transition hover:-translate-y-0.5 hover:border-[#d2e3fc] hover:bg-[#f8fbff] hover:shadow-[0_10px_30px_rgba(32,33,36,0.08)] dark:hover:border-slate-500 dark:hover:bg-white/8" :class="isSelected(folder) ? 'border-[#d2e3fc] bg-gradient-to-r from-[#e8f0fe] to-[#f8fbff] text-[#202124] shadow-[0_10px_30px_rgba(32,33,36,0.08)] dark:border-slate-500 dark:from-sky-500/15 dark:to-slate-800 dark:text-slate-100' : 'border-[#e0e3e7] bg-white text-[#202124] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'" @click="selectItem($event, folder)" @dblclick="openFolder(folder)">
-						<IconFolderFilled :size="18" :stroke="0" class="text-[#1a73e8] transition-transform duration-200 group-hover:scale-110 dark:text-sky-300" />
-						<TruncateMarquee :text="folder.display_name || folder.file_name" />
-					</button>
-				</div>
-			</div>
-
-			<div class="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+			<div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div v-if="selectedCount" class="flex flex-wrap items-center gap-1.5 rounded-full bg-[#e8f0fe] px-2 py-1 text-[#174ea6] dark:bg-sky-500/15 dark:text-sky-200">
 					<button type="button" class="inline-flex size-9 items-center justify-center rounded-full transition hover:bg-[#d2e3fc] dark:hover:bg-sky-500/20" :title="t('drive.deselectAll')" @click="clearSelection">
 						<IconX :size="18" :stroke="2" />
@@ -1029,55 +727,47 @@ onBeforeUnmount(() => {
 						<IconTrash :size="18" :stroke="2" />
 					</button>
 				</div>
-				<h2 v-else class="m-0 text-base font-medium text-[#202124] dark:text-slate-100">{{ t('common.file') }}</h2>
+				<h2 v-else class="m-0 text-base font-medium text-[#202124] dark:text-slate-100">{{ t('nav.starred') }}</h2>
 				<div class="relative w-full sm:w-[280px]">
 					<IconSearch :size="18" :stroke="2" class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#5f6368] dark:text-slate-400" />
-					<input class="h-11 w-full rounded-full border border-[#dadce0] bg-white pl-11 pr-4 text-sm text-[#202124] outline-none transition focus:border-[#1a73e8] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-400" type="search" :value="searchTerm" :placeholder="t('drive.searchInFolder')" @input="fileTreeStore.applySearch($event.target.value)" />
+					<input class="h-11 w-full rounded-full border border-[#dadce0] bg-white pl-11 pr-4 text-sm text-[#202124] outline-none transition focus:border-[#1a73e8] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-400" type="search" :value="searchTerm" :placeholder="t('drive.searchInFolder')" @input="searchTerm = $event.target.value" />
 				</div>
 			</div>
 
-			<p v-if="actionError" class="mb-4 rounded-2xl bg-[#fce8e6] px-4 py-3 text-sm text-[#c5221f] dark:bg-red-950/40 dark:text-red-300">{{ actionError }}</p>
+			<p v-if="errorMessage" class="mb-4 rounded-2xl bg-[#fce8e6] px-4 py-3 text-sm text-[#c5221f] dark:bg-red-950/40 dark:text-red-300">{{ errorMessage }}</p>
 
 			<div v-if="!isGridView" class="custom-scrollbar overflow-x-auto rounded-2xl border border-[#e0e3e7] bg-white dark:border-slate-700 dark:bg-slate-800">
 				<div class="min-w-[760px]">
 					<div class="sticky top-0 z-10 grid min-h-11 grid-cols-[minmax(260px,2fr)_minmax(180px,1.1fr)_minmax(150px,1fr)_140px] items-center gap-3 border-b border-[#e8eaed] bg-[#f8fafd]/95 px-[18px] text-[13px] text-[#5f6368] backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-400">
-						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('file_name')">
-							<span>{{ t('drive.sortByName') }}</span>
+						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('file_name')"><span>{{ t('drive.sortByName') }}</span>
 							<component :is="sortIndicator('file_name')" v-if="sortIndicator('file_name')" :size="14" :stroke="2" />
 						</button>
-						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('email')">
-							<span>{{ t('home.fileOwner') }}</span>
+						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('email')"><span>{{ t('home.fileOwner') }}</span>
 							<component :is="sortIndicator('email')" v-if="sortIndicator('email')" :size="14" :stroke="2" />
 						</button>
-						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('updated_at')">
-							<span>{{ t('home.fileModified') }}</span>
+						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('updated_at')"><span>{{ t('home.fileModified') }}</span>
 							<component :is="sortIndicator('updated_at')" v-if="sortIndicator('updated_at')" :size="14" :stroke="2" />
 						</button>
-						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('size')">
-							<span>{{ t('drive.size') }}</span>
+						<button type="button" class="flex items-center gap-1 text-left hover:text-[#1a73e8]" @click="toggleSort('size')"><span>{{ t('drive.size') }}</span>
 							<component :is="sortIndicator('size')" v-if="sortIndicator('size')" :size="14" :stroke="2" />
 						</button>
 					</div>
-
 					<div class="custom-scrollbar max-h-[min(52vh,520px)] overflow-y-auto overflow-x-hidden">
 						<div v-for="item in sortedFiles" :key="item.id" class="group grid min-h-[52px] cursor-default select-none grid-cols-[minmax(260px,2fr)_minmax(180px,1.1fr)_minmax(150px,1fr)_140px] items-center gap-3 border-t border-[#eceff1] px-[18px] transition first:border-t-0 dark:border-slate-700" :class="isSelected(item) ? 'bg-gradient-to-r from-[#e8f0fe] to-[#f8fbff] shadow-[inset_4px_0_0_#1a73e8] dark:from-sky-500/15 dark:to-slate-800 dark:shadow-[inset_4px_0_0_#38bdf8]' : 'hover:bg-black/[0.02] dark:hover:bg-white/6'" @click="selectItem($event, item)" @dblclick="openItemOnDoubleClick(item)" @contextmenu="openContextMenu($event, item)">
 							<div class="flex min-w-0 items-center gap-2.5 text-[#202124] dark:text-slate-100">
 								<component :is="getFileIcon(item, isSelected(item))" :size="18" :stroke="isSelected(item) ? 0 : 1.8" class="transition-transform duration-200 group-hover:scale-110" :class="isSelected(item) ? 'text-[#1a73e8] drop-shadow-sm dark:text-sky-300' : 'text-[#5f6368] dark:text-slate-400'" />
-								<TruncateMarquee :text="item.display_name || item.file_name" />
+								<TruncateMarquee :text="item.file_name" />
 								<IconStarFilled v-if="item.is_starred && item.capabilities?.starred" :size="14" :stroke="0" class="shrink-0 text-amber-400" />
 							</div>
 							<div class="flex min-w-0 items-center gap-2 text-[#5f6368] dark:text-slate-400">
-								<div v-if="providerIcon(item.provider)" class="flex size-6 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900/70">
-									<img :src="providerIcon(item.provider)" :alt="providerLabel(item.provider)" class="size-3.5 object-contain" />
-								</div>
+								<div v-if="providerIcon(item.provider)" class="flex size-6 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900/70"><img :src="providerIcon(item.provider)" :alt="providerLabel(item.provider)" class="size-3.5 object-contain" /></div>
 								<TruncateMarquee class="min-w-0" :text="item.email" />
 							</div>
 							<span class="text-[#5f6368] dark:text-slate-400">{{ formatDate(item.updated_at) }}</span>
 							<span class="text-[#5f6368] dark:text-slate-400">{{ item.is_folder ? '—' : formatBytes(item.size) }}</span>
 						</div>
-
-						<div v-if="!sortedFiles.length && !isLoading" class="p-[18px] text-[#5f6368] dark:text-slate-400">{{ t('drive.noFiles') }}</div>
-						<div v-if="isLoading" class="p-[18px] text-[#5f6368] dark:text-slate-400">{{ t('drive.loadingMetadata') }}</div>
+						<div v-if="!sortedFiles.length && !loading" class="p-[18px] text-[#5f6368] dark:text-slate-400">{{ t('drive.noFiles') }}</div>
+						<div v-if="loading" class="p-[18px] text-[#5f6368] dark:text-slate-400">{{ t('drive.loadingMetadata') }}</div>
 					</div>
 				</div>
 			</div>
@@ -1092,11 +782,9 @@ onBeforeUnmount(() => {
 							<IconStarFilled v-if="item.is_starred && item.capabilities?.starred" :size="16" :stroke="0" class="shrink-0 text-amber-400" />
 						</div>
 						<div class="min-w-0">
-							<TruncateMarquee as="p" class="text-sm font-semibold text-[#202124] dark:text-slate-100" :text="item.display_name || item.file_name" />
+							<TruncateMarquee as="p" class="text-sm font-semibold text-[#202124] dark:text-slate-100" :text="item.file_name" />
 							<div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-[#5f6368] dark:text-slate-400">
-								<div v-if="providerIcon(item.provider)" class="flex size-6 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900/70">
-									<img :src="providerIcon(item.provider)" :alt="providerLabel(item.provider)" class="size-3.5 object-contain" />
-								</div>
+								<div v-if="providerIcon(item.provider)" class="flex size-6 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900/70"><img :src="providerIcon(item.provider)" :alt="providerLabel(item.provider)" class="size-3.5 object-contain" /></div>
 								<TruncateMarquee as="p" class="min-w-0" :text="item.email || t('drive.noOwner')" />
 							</div>
 						</div>
@@ -1106,9 +794,8 @@ onBeforeUnmount(() => {
 						</div>
 					</button>
 				</div>
-
-				<div v-if="!sortedFiles.length && !isLoading" class="col-span-full rounded-2xl border border-dashed border-[#dadce0] bg-white px-5 py-8 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{{ t('drive.noFiles') }}</div>
-				<div v-if="isLoading" class="col-span-full rounded-2xl border border-dashed border-[#dadce0] bg-white px-5 py-8 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{{ t('drive.loadingMetadata') }}</div>
+				<div v-if="!sortedFiles.length && !loading" class="col-span-full rounded-2xl border border-dashed border-[#dadce0] bg-white px-5 py-8 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{{ t('drive.noFiles') }}</div>
+				<div v-if="loading" class="col-span-full rounded-2xl border border-dashed border-[#dadce0] bg-white px-5 py-8 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{{ t('drive.loadingMetadata') }}</div>
 			</div>
 
 			<div v-if="contextMenu.visible" ref="contextMenuRef" class="fixed z-50 min-w-[220px] overflow-hidden rounded-2xl border border-[#e0e3e7] bg-white py-2 shadow-[0_16px_40px_rgba(32,33,36,0.2)] dark:border-slate-700 dark:bg-slate-800 dark:shadow-[0_16px_40px_rgba(15,23,42,0.45)]" :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.stop>
@@ -1134,7 +821,7 @@ onBeforeUnmount(() => {
 				</button>
 				<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100 dark:hover:bg-slate-700/70" :disabled="selectedCount !== 1" @click="showSelectedFileDetails">
 					<IconInfoCircle :size="17" :stroke="2" />
-					<span>{{ primarySelectedFile?.is_folder ? t('drive.details') + ' ' + t('drive.folder') : t('drive.details') }}</span>
+					<span>{{ t('drive.details') }}</span>
 				</button>
 				<button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#c5221f] hover:bg-[#fce8e6] dark:text-red-300 dark:hover:bg-red-950/30" @click="deleteSelectedFile">
 					<IconTrash :size="17" :stroke="2" />
@@ -1151,7 +838,6 @@ onBeforeUnmount(() => {
 						</div>
 						<button type="button" class="rounded-full px-3 py-1 text-sm text-[#5f6368] hover:bg-black/5 dark:text-slate-400 dark:hover:bg-white/8" @click="closeDetails">{{ t('common.close') }}</button>
 					</div>
-
 					<dl class="mt-6 grid grid-cols-[140px_1fr] gap-x-4 gap-y-3 text-sm">
 						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('common.name') }}</dt>
 						<dd>{{ detailsFile.name || detailsFile.file_name }}</dd>
@@ -1161,15 +847,15 @@ onBeforeUnmount(() => {
 						<dd>{{ detailsFile.is_folder ? t('drive.folder') : formatBytes(detailsFile.size) }}</dd>
 						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.owner') }}</dt>
 						<dd>{{ detailsFile.owner_email || detailsFile.email || '—' }}</dd>
-						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.provider') || 'Provider' }}</dt>
-						<dd>{{ detailsFile.provider || 'google-drive' }}</dd>
+						<dt class="text-[#5f6368] dark:text-slate-400">Provider</dt>
+						<dd>{{ providerLabel(detailsFile.provider) }}</dd>
 						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.created') }}</dt>
 						<dd>{{ formatDate(detailsFile.created_at || detailsFile.createdTime) }}</dd>
 						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.modified') }}</dt>
 						<dd>{{ formatDate(detailsFile.updated_at || detailsFile.modifiedTime) }}</dd>
 						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.location') }}</dt>
-						<dd class="break-all">{{ detailsFile.virtual_path || currentPath }}</dd>
-						<dt class="text-[#5f6368] dark:text-slate-400">{{ t('drive.remoteId') }}</dt>
+						<dd class="break-all">{{ detailsFile.virtual_path }}</dd>
+						<dt class="text-[#5f6368] dark:text-slate-400">Remote ID</dt>
 						<dd class="break-all">{{ detailsFile.remote_file_id || detailsFile.id }}</dd>
 					</dl>
 				</div>
@@ -1179,7 +865,7 @@ onBeforeUnmount(() => {
 				<div class="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white text-[#202124] shadow-[0_24px_60px_rgba(32,33,36,0.28)] dark:bg-slate-900 dark:text-slate-100" @click.stop>
 					<div class="flex items-center justify-between gap-4 border-b border-[#e8eaed] px-5 py-4 dark:border-slate-800">
 						<div class="min-w-0">
-							<p class="truncate text-base font-semibold">{{ previewFile.display_name || previewFile.file_name }}</p>
+							<p class="truncate text-base font-semibold">{{ previewFile.file_name }}</p>
 						</div>
 						<div class="flex items-center gap-2">
 							<button type="button" class="grid size-10 place-items-center rounded-full text-[#5f6368] hover:bg-black/5 dark:text-slate-400 dark:hover:bg-white/8" @click="closePreview">
@@ -1187,12 +873,8 @@ onBeforeUnmount(() => {
 							</button>
 						</div>
 					</div>
-
 					<div class="relative min-h-[420px] flex-1 bg-[#f8fafd] dark:bg-slate-950">
-						<div v-if="isPreviewLoading" class="absolute inset-0 z-10 grid place-items-center text-sm text-[#5f6368] dark:text-slate-400">
-							{{ t('preview.loading') }}
-						</div>
-
+						<div v-if="isPreviewLoading" class="absolute inset-0 z-10 grid place-items-center text-sm text-[#5f6368] dark:text-slate-400">{{ t('preview.loading') }}</div>
 						<img v-if="previewFile.previewType === 'image'" :src="previewFile.previewUrl" class="max-h-[75vh] w-full object-contain" alt="Preview file" @load="handlePreviewLoaded" @error="handlePreviewFailed" />
 						<video v-else-if="previewFile.previewType === 'video'" class="max-h-[75vh] w-full bg-black" controls playsinline @loadeddata="handlePreviewLoaded" @error="handlePreviewFailed">
 							<source :src="previewFile.previewUrl" :type="previewFile.mime_type || 'video/mp4'" />
@@ -1202,7 +884,7 @@ onBeforeUnmount(() => {
 								<div class="mx-auto grid size-16 place-items-center rounded-full bg-[#e8f0fe] text-[#1a73e8] dark:bg-slate-800">
 									<IconMusic :size="28" :stroke="1.8" />
 								</div>
-								<p class="mt-4 font-medium">{{ previewFile.display_name || previewFile.file_name }}</p>
+								<p class="mt-4 font-medium">{{ previewFile.file_name }}</p>
 								<audio class="mt-5 w-full" controls @loadeddata="handlePreviewLoaded" @error="handlePreviewFailed">
 									<source :src="previewFile.previewUrl" :type="previewFile.mime_type || 'audio/mpeg'" />
 								</audio>
@@ -1220,7 +902,6 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 			</div>
-
 		</div>
 
 		<FloatingProgressToast :uploads="uploads" :total-progress="totalProgress" @close="uploadQueueStore.clearOperations" @close-item="uploadQueueStore.closeOperation" />

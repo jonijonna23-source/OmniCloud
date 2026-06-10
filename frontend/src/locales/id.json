@@ -3,6 +3,7 @@
 		"new": "Baru",
 		"search": "Telusuri",
 		"searchIn": "Telusuri di {place}",
+		"open": "Buka",
 		"close": "Tutup",
 		"cancel": "Batal",
 		"save": "Simpan",
@@ -30,7 +31,8 @@
 		"confirm": "Konfirmasi",
 		"success": "Berhasil",
 		"error": "Kesalahan",
-		"retry": "Coba lagi"
+		"retry": "Coba lagi",
+		"name": "Nama"
 	},
 	"nav": {
 		"home": "Beranda",
@@ -75,6 +77,8 @@
 	},
 	"drive": {
 		"title": "Drive Saya",
+		"starredTitle": "Berbintang",
+		"starredSubtitle": "File yang ditandai berbintang dari semua provider yang mendukungnya.",
 		"uploadPipeline": "Upload pipeline",
 		"dragDropTitle": "Drag, drop, and stream directly to the target cloud",
 		"dragDropDesc": "File payloads pass through the Node.js proxy, while metadata is mirrored locally and progress is reported by WebSocket.",
@@ -90,6 +94,8 @@
 		"deleteConfirmDesc": "Item akan dipindahkan ke sampah.",
 		"details": "Detail",
 		"preview": "Pratinjau",
+		"star": "Beri bintang",
+		"unstar": "Hapus bintang",
 		"owner": "Pemilik",
 		"modified": "Diubah",
 		"size": "Ukuran",
@@ -114,7 +120,9 @@
 		"newNamePrompt": "Nama baru",
 		"renameTooltip": "Ganti Nama",
 		"folder": "Folder",
-		"created": "Dibuat"
+		"created": "Dibuat",
+		"provider": "Provider",
+		"remoteId": "ID jarak jauh"
 	},
 	"quota": {
 		"title": "Penyimpanan",

@@ -18,6 +18,12 @@ export class OneDriveAdapter extends BaseCloudAdapter {
 		this.accessTokenCache = null;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+		};
+	}
+
 	async createAccessToken() {
 		if (this.accessTokenCache && this.accessTokenCache.expiresAt > Date.now() + 30_000) {
 			return this.accessTokenCache.token;
@@ -168,6 +174,7 @@ export class OneDriveAdapter extends BaseCloudAdapter {
 					virtual_path: virtualPath,
 					file_name: item.name,
 					is_folder: isFolder,
+					is_starred: 0,
 					size: Number(item.size || 0),
 					mime_type: item.file?.mimeType || null,
 					remote_file_id: item.id,

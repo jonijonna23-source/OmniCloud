@@ -3,6 +3,7 @@
 		"new": "New",
 		"search": "Search",
 		"searchIn": "Search in {place}",
+		"open": "Open",
 		"close": "Close",
 		"cancel": "Cancel",
 		"save": "Save",
@@ -30,7 +31,8 @@
 		"confirm": "Confirm",
 		"success": "Success",
 		"error": "Error",
-		"retry": "Retry"
+		"retry": "Retry",
+		"name": "Name"
 	},
 	"nav": {
 		"home": "Home",
@@ -75,6 +77,8 @@
 	},
 	"drive": {
 		"title": "My Drive",
+		"starredTitle": "Starred",
+		"starredSubtitle": "Files marked with a star from all supported providers.",
 		"uploadPipeline": "Upload pipeline",
 		"dragDropTitle": "Drag, drop, and stream directly to the target cloud",
 		"dragDropDesc": "File payloads pass through the Node.js proxy, while metadata is mirrored locally and progress is reported by WebSocket.",
@@ -90,6 +94,8 @@
 		"deleteConfirmDesc": "Item will be moved to trash.",
 		"details": "Details",
 		"preview": "Preview",
+		"star": "Star",
+		"unstar": "Unstar",
 		"owner": "Owner",
 		"modified": "Modified",
 		"size": "Size",
@@ -114,7 +120,9 @@
 		"newNamePrompt": "New name",
 		"renameTooltip": "Rename",
 		"folder": "Folder",
-		"created": "Created"
+		"created": "Created",
+		"provider": "Provider",
+		"remoteId": "Remote ID"
 	},
 	"quota": {
 		"title": "Storage",

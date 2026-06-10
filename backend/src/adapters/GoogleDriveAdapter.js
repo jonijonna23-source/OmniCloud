@@ -15,6 +15,12 @@ function escapeDriveQueryValue(value) {
 }
 
 export class GoogleDriveAdapter extends BaseCloudAdapter {
+	getCapabilities() {
+		return {
+			starred: true,
+		};
+	}
+
 	createOAuthClient() {
 		const credentials = decryptJson(this.account.encrypted_credentials);
 		const oauthClient = new google.auth.OAuth2(
@@ -90,7 +96,7 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 		do {
 			const response = await drive.files.list({
 				q: 'trashed = false',
-				fields: 'nextPageToken, files(id, name, mimeType, size, parents)',
+				fields: 'nextPageToken, files(id, name, mimeType, size, parents, starred)',
 				pageSize: 1000,
 				pageToken,
 				supportsAllDrives: false,
@@ -130,11 +136,23 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 			virtual_path: buildFolderPath(file),
 			file_name: file.name,
 			is_folder: file.mimeType === FOLDER_MIME_TYPE,
+			is_starred: file.starred ? 1 : 0,
 			size: Number(file.size || 0),
 			mime_type: file.mimeType || null,
 			remote_file_id: file.id,
 			remote_parent_id: file.parents?.[0] || null,
 		}));
+	}
+
+	async setFileStarred(fileRecord, isStarred) {
+		const drive = await this.getDriveClient();
+		await drive.files.update({
+			fileId: fileRecord.remote_file_id,
+			requestBody: {
+				starred: Boolean(isStarred),
+			},
+			fields: 'id, starred',
+		});
 	}
 
 	async getStorageSummary() {

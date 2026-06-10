@@ -35,6 +35,9 @@ export const api = {
 		const query = new URLSearchParams({ path: virtualPath }).toString();
 		return request(`/files?${query}`);
 	},
+	listStarredFiles() {
+		return request('/files?starred=1');
+	},
 	getFileDetails(fileId) {
 		return request(`/files/${fileId}`);
 	},
@@ -48,6 +51,12 @@ export const api = {
 		return request(`/files/${fileId}/rename`, {
 			method: 'PATCH',
 			body: JSON.stringify(payload),
+		});
+	},
+	toggleStar(fileId, isStarred = true) {
+		return request(`/files/${fileId}/star`, {
+			method: 'PATCH',
+			body: JSON.stringify({ is_starred: isStarred }),
 		});
 	},
 	deleteFile(fileId) {

@@ -6,6 +6,12 @@ export class BaseCloudAdapter {
 		this.account = account;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+		};
+	}
+
 	async fetchStructure() {
 		return [];
 	}
@@ -83,5 +89,9 @@ export class BaseCloudAdapter {
 
 	async getDeltaChanges() {
 		return [];
+	}
+
+	async setFileStarred() {
+		throw new Error(`Starred state is not supported for provider ${this.account.provider}`);
 	}
 }

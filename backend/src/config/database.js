@@ -33,6 +33,7 @@ db.exec(`
     virtual_path TEXT NOT NULL,
     file_name TEXT NOT NULL,
     is_folder INTEGER NOT NULL DEFAULT 0,
+	is_starred INTEGER NOT NULL DEFAULT 0,
     size INTEGER NOT NULL DEFAULT 0,
     mime_type TEXT,
     cloud_account_id TEXT NOT NULL,
@@ -42,7 +43,7 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(cloud_account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
   );
-
+  
   CREATE INDEX IF NOT EXISTS idx_file_virtual_path ON file_metadata(virtual_path);
   CREATE INDEX IF NOT EXISTS idx_file_remote_id ON file_metadata(remote_file_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_file_account_remote_id

@@ -8,7 +8,12 @@ function normalizePath(input = '/') {
 }
 
 function buildDisplayNames(rows) {
-	return rows;
+	return rows.map((row) => ({
+		...row,
+		capabilities: {
+			starred: row.provider === 'google_drive',
+		},
+	}));
 }
 
 export function listFilesByPath(virtualPath = '/') {
@@ -55,7 +60,7 @@ export function createFileMetadata(record) {
 }
 
 export function getFileById(id) {
-	return db
+	const row = db
 		.prepare(`
       SELECT fm.*, ca.provider, ca.email
       FROM file_metadata fm
@@ -63,10 +68,13 @@ export function getFileById(id) {
 			WHERE fm.id = ? AND ca.status = 'active'
     `)
 		.get(id);
+
+	if (!row) return row;
+	return buildDisplayNames([row])[0];
 }
 
 export function getFileByRemoteId(cloudAccountId, remoteFileId) {
-	return db
+	const row = db
 		.prepare(`
       SELECT fm.*, ca.provider, ca.email
       FROM file_metadata fm
@@ -74,10 +82,43 @@ export function getFileByRemoteId(cloudAccountId, remoteFileId) {
 			WHERE fm.cloud_account_id = ? AND fm.remote_file_id = ? AND ca.status = 'active'
     `)
 		.get(cloudAccountId, remoteFileId);
+
+	if (!row) return row;
+	return buildDisplayNames([row])[0];
 }
 
 export function listAllFiles() {
 	return db.prepare('SELECT * FROM file_metadata').all();
+}
+
+export function listStarredFiles() {
+	const rows = db
+		.prepare(`
+			SELECT fm.*, ca.provider, ca.email
+			FROM file_metadata fm
+			INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+			WHERE COALESCE(fm.is_starred, 0) = 1 AND ca.status = 'active'
+			ORDER BY fm.updated_at DESC, fm.file_name COLLATE NOCASE ASC
+		`)
+		.all();
+
+	return buildDisplayNames(rows);
+}
+
+export function updateFileStarredByRemoteId(cloudAccountId, remoteFileId, isStarred) {
+	return db.prepare(`
+		UPDATE file_metadata
+		SET is_starred = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE cloud_account_id = ? AND remote_file_id = ?
+	`).run(isStarred ? 1 : 0, cloudAccountId, remoteFileId);
+}
+
+export function setFileStarred(fileId, isStarred) {
+	return db.prepare(`
+		UPDATE file_metadata
+		SET is_starred = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`).run(isStarred ? 1 : 0, fileId);
 }
 
 export function replaceFilesForAccount(cloudAccountId, records) {
@@ -86,6 +127,7 @@ export function replaceFilesForAccount(cloudAccountId, records) {
 		virtual_path: normalizePath(record.virtual_path),
 		file_name: record.file_name,
 		is_folder: record.is_folder ? 1 : 0,
+		is_starred: record.is_starred ? 1 : 0,
 		size: Number(record.size || 0),
 		mime_type: record.mime_type || null,
 		cloud_account_id: cloudAccountId,
@@ -102,10 +144,10 @@ export function replaceFilesForAccount(cloudAccountId, records) {
 
 		const insert = db.prepare(`
       INSERT INTO file_metadata (
-        id, virtual_path, file_name, is_folder, size, mime_type,
+				id, virtual_path, file_name, is_folder, is_starred, size, mime_type,
         cloud_account_id, remote_file_id, remote_parent_id
       ) VALUES (
-        @id, @virtual_path, @file_name, @is_folder, @size, @mime_type,
+				@id, @virtual_path, @file_name, @is_folder, @is_starred, @size, @mime_type,
         @cloud_account_id, @remote_file_id, @remote_parent_id
       )
     `);
@@ -123,16 +165,17 @@ export function clearFilesForAccount(cloudAccountId) {
 export function upsertFileMetadata(record) {
 	db.prepare(`
     INSERT INTO file_metadata (
-      id, virtual_path, file_name, is_folder, size, mime_type,
+			id, virtual_path, file_name, is_folder, is_starred, size, mime_type,
       cloud_account_id, remote_file_id, remote_parent_id
     ) VALUES (
-      @id, @virtual_path, @file_name, @is_folder, @size, @mime_type,
+			@id, @virtual_path, @file_name, @is_folder, @is_starred, @size, @mime_type,
       @cloud_account_id, @remote_file_id, @remote_parent_id
     )
     ON CONFLICT(id) DO UPDATE SET
       virtual_path = excluded.virtual_path,
       file_name = excluded.file_name,
       is_folder = excluded.is_folder,
+			is_starred = excluded.is_starred,
       size = excluded.size,
       mime_type = excluded.mime_type,
       cloud_account_id = excluded.cloud_account_id,
@@ -143,6 +186,7 @@ export function upsertFileMetadata(record) {
 		...record,
 		virtual_path: normalizePath(record.virtual_path),
 		is_folder: record.is_folder ? 1 : 0,
+		is_starred: record.is_starred ? 1 : 0,
 	});
 }
 

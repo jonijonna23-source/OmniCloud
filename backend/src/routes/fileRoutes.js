@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listFilesByPath, getFileById } from '../services/fileService.js';
+import { listFilesByPath, getFileById, listStarredFiles, setFileStarred, updateFileStarredByRemoteId } from '../services/fileService.js';
 import { getAccountById } from '../services/accountService.js';
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
@@ -40,8 +40,31 @@ function ensureFileContext(context, res) {
 }
 
 router.get('/files', (req, res) => {
-	const files = listFilesByPath(req.query.path || '/');
+	const files = req.query.starred === '1' ? listStarredFiles() : listFilesByPath(req.query.path || '/');
 	res.json({ data: files });
+});
+
+router.patch('/files/:id/star', async (req, res, next) => {
+	try {
+		const context = getFileContext(req.params.id);
+		if (!ensureFileContext(context, res)) {
+			return;
+		}
+
+		const isStarred = Boolean(req.body?.is_starred ?? req.body?.isStarred ?? true);
+		const supportsStarred = Boolean(context.adapter.getCapabilities?.().starred);
+
+		if (supportsStarred) {
+			await context.adapter.setFileStarred(context.file, isStarred);
+			await syncAccount(context.account);
+			updateFileStarredByRemoteId(context.account.id, context.file.remote_file_id, isStarred);
+		} else {
+			setFileStarred(context.file.id, isStarred);
+		}
+		return res.json({ data: { success: true, is_starred: isStarred, provider_sync: supportsStarred } });
+	} catch (error) {
+		next(error);
+	}
 });
 
 router.post('/files/bulk/delete', async (req, res, next) => {
