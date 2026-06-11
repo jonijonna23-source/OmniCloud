@@ -1,200 +1,379 @@
+<p align="center">
+  <img src="frontend/src/assets/logo.webp" alt="Omnicloud Logo" width="192">
+</p>
+
 # OmniCloud
+
+[![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript) [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/) [![Vue.js](https://img.shields.io/badge/Vue.js-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)](https://vuejs.org/) [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/) [![Node.js](https://img.shields.io/badge/Node.js-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![Express.js](https://img.shields.io/badge/Express.js-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/) [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/) [![WebSocket](https://img.shields.io/badge/WebSocket-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
 
 OmniCloud is a full-stack cloud drive aggregation platform that presents multiple storage providers through a single, consistent workspace. The application combines a Vue-based client with an Express API and provider adapter layer, enabling users to browse, upload, download, and manage files across connected cloud accounts from one interface.
 
-## ✨ Overview
+![OmniCloud Overview](frontend/src/assets/overview.webp)
 
-OmniCloud is designed around a unified file experience:
+## ✨ Key features
 
-- Connect supported cloud storage accounts through provider-specific authentication
-- Browse provider content through a normalized virtual file tree
-- Manage files and folders through a single UI
-- Stream uploads through the API with real-time progress updates
-- Maintain a local metadata mirror for responsive navigation and synchronization
+### ☁️ Multi-provider cloud aggregation
+- Connect multiple cloud storage accounts in one application
+- All providers are normalized through a consistent adapter layer
+- Active provider support includes OAuth, account-based login, and access-key-based connections
 
-## 🚀 Core capabilities
+### 🗂️ Unified file workspace
+- `Home`, `My Drive`, `Recent`, `Starred`, `Shared with Me`, and `Quota` views
+- Virtual-path-based file navigation across providers
+- File metadata is presented consistently across different provider sources
 
-### 🗂️ Unified storage interface
-- Consolidated file browsing across connected providers
-- `Home` and `My Drive` style navigation
-- Normalized virtual paths for cross-provider access patterns
-
-### 📁 File and folder operations
+### 📁 File management
+- Browse files and folders from connected accounts
 - Create folders
 - Rename files and folders
-- Delete files and folders
+- Delete files and folders, including bulk delete
 - Download provider files
-- View file metadata and details
+- View file details and previews for supported file types
+- Star / unstar files on providers that support it
 
-### ⬆️ Upload workflow
-- File upload from the browser
+### ⬆️ Upload system
+- Browser-based file uploads
 - Folder upload support
-- Drag-and-drop upload interactions
-- WebSocket-based progress reporting
+- Drag-and-drop uploads
+- Upload session initiation through the API
+- Real-time upload progress over WebSocket
+- Automatic upload account allocation based on storage selection strategy
 
-### 🔗 Account and quota management
-- Real provider account connections
-- Local persistence of linked account metadata
-- Per-account storage usage tracking
+### 🔄 Sync and metadata mirror
+- File metadata is stored in SQLite for fast navigation
+- Account synchronization runs on a schedule using `node-cron`
+- The API exposes a manual sync trigger
+- Delta sync reports are available through the health/sync layer
 
-### ⚙️ Operational architecture
-- Shared adapter model for provider integrations
-- SQLite-backed metadata mirror
-- Scheduled synchronization jobs
-- Secure local persistence for provider credentials and tokens
+### 👤 Auth and app modes
+- `local` mode for personal or simple self-hosted usage
+- `hosted` mode for multi-user deployments with session-cookie-based register/login/logout
+- Account data, file mirrors, allocation config, and settings are scoped per user
+
+### ⚙️ User settings and storage allocation
+- User settings such as language and theme
+- Storage allocation strategies:
+  - `round_robin`
+  - `weighted_round_robin`
+  - `least_used`
+  - `most_free`
+  - `manual`
+- Account priority order can be configured for the manual strategy
+
+## Preview
+
+![OmniCloud My Drive Page](frontend/src/assets/screenshot-1.webp)
+![OmniCloud Storage Overview](frontend/src/assets/screenshot-2.webp)
+![OmniCloud Storage Allocation](frontend/src/assets/screenshot-3.webp)
 
 ## ☁️ Supported providers
 
-| Provider | Integration |
-| --- | --- |
-| Google Drive | OAuth + Drive API |
-| OneDrive | Microsoft Graph |
-| Dropbox | OAuth + Dropbox file APIs |
-| MEGA | Account login + file APIs |
-| S3-compatible | Adapter foundation |
+| Provider | Status | Integration model |
+| --- | --- | --- |
+| Google Drive | Active | OAuth + Google Drive API |
+| OneDrive | Active | OAuth + Microsoft Graph |
+| Dropbox | Active | OAuth + Dropbox API |
+| Yandex Disk | Active | OAuth + Yandex Disk API |
+| MEGA | Active | Email/password account connection |
+| pCloud | Active | Email/password account connection |
+| S3-compatible storage | Active | Access key / secret key / endpoint based |
 
-## 🏗️ Architecture
+> Detailed provider credential setup is available in [`docs/provider-setup.md`](docs/provider-setup.md).
+
+## 🏗️ Project structure
 
 ```text
 OmniCloud/
-├─ frontend/         # Vue 3 application
-├─ backend/          # Express API, adapters, sync, SQLite
-├─ docs/             # Supporting documentation
-├─ package.json      # Workspace scripts
+├─ frontend/         # Vue 3 app (Vite, Pinia, Vue Router, i18n)
+├─ backend/          # Express API, adapters, sync engine, SQLite
+├─ docs/             # Provider setup documentation
+├─ package.json      # Root workspace scripts
 ├─ LICENSE
 └─ README.md
 ```
 
-### 🎨 Frontend
-- Vue 3
-- Vite
-- Pinia
-- Vue Router
-- Tailwind CSS v4
-- `@tabler/icons-vue`
+## 🔄 How OmniCloud works
+```mermaid
+flowchart TD
+    U[User] --> F[Frontend<br/>Vue 3 + Vite]
+    F -->|REST API requests| B[Backend API<br/>Express.js]
 
-### 🧩 Backend
-- Node.js
-- Express
-- WebSocket via `ws`
-- SQLite via `better-sqlite3`
-- `node-cron` for scheduled synchronization
-- Provider SDKs and API integrations
+    subgraph Frontend Features
+        F1[Auth]
+        F2[Accounts]
+        F3[File Explorer]
+        F4[Uploads]
+        F5[Settings]
+        F6[Allocation]
+    end
 
-## 🔄 How it works
+    F --> F1
+    F --> F2
+    F --> F3
+    F --> F4
+    F --> F5
+    F --> F6
 
-The frontend communicates exclusively with the API layer. The API delegates provider-specific behavior to adapter implementations, mirrors file metadata into SQLite, and coordinates synchronization and upload progress events.
+    B --> A[Adapter Registry]
+    A --> G[Google Drive Adapter]
+    A --> O[OneDrive Adapter]
+    A --> D[Dropbox Adapter]
+    A --> M[MEGA Adapter]
+    A --> P[pCloud Adapter]
+    A --> Y[Yandex Adapter]
+    A --> S[S3 Adapter]
 
+    G --> CP[Cloud Providers]
+    O --> CP
+    D --> CP
+    M --> CP
+    P --> CP
+    Y --> CP
+    S --> CP
+
+    B --> N[Normalized OmniCloud Data Model]
+    CP --> N
+
+    N --> DB[SQLite Metadata Mirror]
+    B --> DB
+
+    B -->|Upload progress| WS[WebSocket Hub]
+    WS --> F
+
+    B --> SY[Sync Service]
+    SY --> CRON[node-cron Scheduler]
+    SY --> CP
+    SY --> DB
+
+    B --> AL[Allocation Service]
+    AL --> ACC[Target Account Selection<br/>round_robin / weighted / least_used / most_free / manual]
+    ACC --> CP
+
+    B --> AU[Auth & Session Layer]
+    AU --> DB
+```
 At a high level:
 
-1. the client requests file or account operations through the API
-2. the API selects the appropriate provider adapter
-3. provider responses are normalized into the OmniCloud data model
-4. metadata is stored locally for fast navigation and sync workflows
-5. upload progress is published to the client over WebSocket connections
+1. The frontend calls the REST API for auth, accounts, files, uploads, settings, and allocation
+2. The backend selects the appropriate provider adapter (`google_drive`, `onedrive`, `dropbox`, `mega`, `pcloud`, `yandex`, `s3`)
+3. Provider responses are normalized into the OmniCloud data model
+4. File metadata is mirrored into SQLite for fast access
+5. Upload progress is pushed to the client over WebSocket
+6. The sync service keeps local metadata aligned with provider state
+
+## 🧩 Current application views
+
+The frontend currently includes these main views:
+
+- `/` → Home dashboard
+- `/my-drive` → main file explorer
+- `/shared-with-me` → shared files from supported providers
+- `/recent` → recent files
+- `/starred` → starred files
+- `/quota` → quota overview, account management, allocation settings
+- `/login` and `/register` → used in hosted mode
 
 ## 📋 Requirements
 
-Before running OmniCloud locally, ensure the following are installed and available:
+Before running the project, make sure you have:
 
-- Node.js 20 or newer
+- Node.js 20+
 - npm
-- provider credentials for any cloud integrations you intend to use
+- Provider credentials for the cloud services you want to use
 
-For best tooling compatibility, use an LTS Node.js release.
+Using a current compatible Node.js LTS release is recommended.
 
-## 🛠️ Getting started
+## 🛠️ Local setup
 
-### 1️⃣ Install dependencies
+### 1. Install dependencies
 
-From the repository root:
+From the project root:
 
-- `npm install`
+```bash
+npm install
+```
 
-### 2️⃣ Configure environment variables
+### 2. Create the backend environment file
 
-Create a local environment file for the API:
+Copy the env template:
 
-- copy `backend/.env.example` to `backend/.env`
+```bash
+copy backend/.env.example backend/.env
+```
 
-Example values:
+Or create it manually based on `backend/.env.example`.
+
+### 3. Fill in the environment variables
+
+Example environment values for the current project:
 
 ```env
 PORT=8787
+
+# local = single-user, hosted = multi-user with login/register
+APP_MODE=local
+
 CORS_ORIGIN=http://localhost:5173
+FRONTEND_URL=http://localhost:5173
+
 SYNC_INTERVAL_MINUTES=5
 OMNICLOUD_SECRET_HALF=replace-this-with-random-half-key
+
+AUTH_COOKIE_NAME=omnicloud_session
+AUTH_SESSION_TTL_HOURS=336
+AUTH_SECRET=replace-this-with-a-strong-random-secret
+
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:8787/api/accounts/google/callback
+
 ONEDRIVE_CLIENT_ID=
 ONEDRIVE_CLIENT_SECRET=
 ONEDRIVE_TENANT_ID=common
 ONEDRIVE_REDIRECT_URI=http://localhost:8787/api/accounts/onedrive/callback
+
 DROPBOX_CLIENT_ID=
 DROPBOX_CLIENT_SECRET=
 DROPBOX_REDIRECT_URI=http://localhost:8787/api/accounts/dropbox/callback
+
+YANDEX_CLIENT_ID=
+YANDEX_CLIENT_SECRET=
+YANDEX_REDIRECT_URI=http://localhost:8787/api/accounts/yandex/callback
 ```
 
-### 3️⃣ Configure provider credentials
+Notes:
+- MEGA and pCloud do not use `.env` credentials; they are connected from the UI using email/password
+- S3-compatible storage is configured from the UI using endpoint/bucket/access key/secret key
+- `APP_MODE=hosted` enables the register/login/logout flow using session cookies
 
-Provider setup instructions are documented in:
+### 4. Configure provider credentials
+
+Follow the detailed guide in:
 
 - [`docs/provider-setup.md`](docs/provider-setup.md)
 
 ## 💻 Development
 
-Run the frontend and backend together from the repository root:
+Run the frontend and backend together from the root:
 
-- `npm run dev`
+```bash
+npm run dev
+```
 
 Default local endpoints:
 
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:8787`
 
-### 📌 Available scripts
+## 📌 Available scripts
 
-Root scripts exposed by `package.json`:
+### Root scripts
 
 | Script | Description |
 | --- | --- |
 | `npm run dev` | Run frontend and backend in parallel |
-| `npm run build` | Build the frontend application |
-| `npm run dev:web` | Run only the frontend dev server |
-| `npm run dev:api` | Run only the backend API server |
-| `npm start` | Start the backend server |
+| `npm run build` | Build the production frontend |
+| `npm run build:web` | Build only the frontend |
+| `npm run dev:web` | Run the Vite dev server |
+| `npm run dev:api` | Run the backend with `node --watch` |
+| `npm start` | Start the backend without watch mode |
 
-## 🔌 API surface
+### Frontend scripts
 
-Representative endpoints include:
+| Script | Description |
+| --- | --- |
+| `npm --prefix frontend run dev` | Start the Vite dev server |
+| `npm --prefix frontend run build` | Build the frontend |
+| `npm --prefix frontend run preview` | Preview the built frontend |
 
-### ❤️ Health
+### Backend scripts
+
+| Script | Description |
+| --- | --- |
+| `npm --prefix backend run dev` | Run the API with file watch |
+| `npm --prefix backend start` | Run the API normally |
+
+## 🔌 API overview
+
+These are the main API surfaces currently present in the project.
+
+### Health and sync
 - `GET /api/health`
+- `POST /api/sync/run`
 
-### 👤 Accounts
+### Authentication
+- `GET /api/auth/me`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+
+### Accounts
 - `GET /api/accounts`
-- provider connect and callback routes under `/api/accounts/...`
+- `DELETE /api/accounts/:id`
+- `GET /api/accounts/google/status`
+- `GET /api/accounts/onedrive/status`
+- `GET /api/accounts/dropbox/status`
+- `GET /api/accounts/yandex/status`
+- `GET /api/accounts/mega/status`
+- `GET /api/accounts/google/connect`
+- `GET /api/accounts/onedrive/connect`
+- `GET /api/accounts/dropbox/connect`
+- `GET /api/accounts/yandex/connect`
+- `POST /api/accounts/mega/connect`
+- `POST /api/accounts/pcloud/connect`
+- `POST /api/accounts/s3/connect`
+- OAuth callback routes under `/api/accounts/*/callback`
 
-### 📄 Files
+### Files
+- `GET /api/files`
 - `GET /api/files?path=/`
-- `GET /api/files/:id`
-- `GET /api/files/:id/download`
-- `PATCH /api/files/:id/rename`
-- `DELETE /api/files/:id`
-- `POST /api/files/folders`
+- `GET /api/files?recent=1`
+- `GET /api/files?starred=1`
+- `GET /api/files?shared=1`
+- `GET /api/files/:id/shared-children`
+- `PATCH /api/files/:id/star`
+- `POST /api/files/bulk/delete`
 
-### 📤 Uploads
+> The project also includes additional file routes for file explorer operations such as details, download, rename, create folder, and per-item delete in the file service / adapter workflow.
+
+### Uploads
 - `POST /api/uploads/initiate`
 - `POST /api/uploads/:uploadId/stream`
 - `WS /ws/uploads?uploadId=...`
 
-## 🔒 Data and security
+### Settings and allocation
+- `GET /api/settings`
+- `PATCH /api/settings`
+- `GET /api/allocation`
+- `PATCH /api/allocation`
 
-- Local metadata is stored in `backend/omnicloud.db`
-- Environment files and local database files should not be committed
-- OAuth credentials, refresh tokens, and provider credentials must be treated as sensitive material
-- Provider application consent and callback settings should be reviewed before using production credentials
+## 🧠 Storage allocation behavior
+
+When an upload starts, the backend selects the target account based on the user's allocation configuration. This allows file distribution across providers to be automatic or manually prioritized depending on the user's preference.
+
+Example use cases:
+- Distribute uploads across multiple accounts in rotation
+- Prioritize the account with the most free space
+- Enforce a specific manual ordering
+
+## 🗄️ Data persistence
+
+Important data stored locally includes:
+
+- Mirrored file metadata in SQLite (`backend/omnicloud.db`)
+- Linked account metadata
+- Encrypted provider credentials / token material
+- User settings
+- Allocation config and rotation state
+- Auth session data for hosted mode
+
+## 🔒 Security notes
+
+- Do not commit `backend/.env`
+- Do not commit local production or personal testing database files
+- OAuth client secrets, refresh tokens, session secrets, access keys, and provider passwords must be treated as sensitive
+- `OMNICLOUD_SECRET_HALF` is used as part of local encryption key material
+- For `APP_MODE=hosted`, use a strong `AUTH_SECRET` and the correct frontend origin
 
 ## 📄 License
 
