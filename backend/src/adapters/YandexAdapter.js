@@ -77,7 +77,7 @@ export class YandexAdapter extends BaseCloudAdapter {
 		};
 
 		try {
-			updateAccountCredentials(this.account.id, {
+			updateAccountCredentials(this.account.user_id, this.account.id, {
 				...credentials,
 				accessToken: payload.access_token,
 				refreshToken: payload.refresh_token || credentials.refreshToken,

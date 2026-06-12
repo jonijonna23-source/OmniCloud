@@ -55,7 +55,6 @@ export class MegaAdapter extends BaseCloudAdapter {
 
 				try {
 					await sessionStorage.ready;
-					await sessionStorage.getAccountInfo();
 					await this.loadFileTree(sessionStorage);
 					return sessionStorage;
 				} catch (error) {
@@ -94,6 +93,20 @@ export class MegaAdapter extends BaseCloudAdapter {
 		return this.storagePromise;
 	}
 
+	invalidateStorage() {
+		const previous = this.storagePromise;
+		this.storagePromise = null;
+		if (previous && typeof previous.then === 'function') {
+			previous
+				.then((storage) => {
+					if (storage && typeof storage.close === 'function') {
+						storage.close().catch(() => { });
+					}
+				})
+				.catch(() => { /* already rejected */ });
+		}
+	}
+
 	loadFileTree(storage) {
 		return new Promise((resolve, reject) => {
 			storage.reload(true, (error) => {
@@ -111,7 +124,7 @@ export class MegaAdapter extends BaseCloudAdapter {
 			const session = storage.toJSON();
 			if (!session) return;
 
-			updateAccountCredentials(this.account.id, {
+			updateAccountCredentials(this.account.user_id, this.account.id, {
 				...credentials,
 				session,
 			});
@@ -158,10 +171,14 @@ export class MegaAdapter extends BaseCloudAdapter {
 
 	async fetchStructure() {
 		const storage = await this.getStorage();
+
+		await this.loadFileTree(storage);
+
 		const files = Object.values(storage.files || {});
 
 		return files
 			.filter((file) => file && file !== storage.root && file !== storage.trash && file !== storage.inbox && file.name)
+			.filter((file) => file.parent !== storage.trash && file.parent !== storage.inbox)
 			.map((file) => ({
 				virtual_path: buildVirtualPath(file),
 				file_name: file.name,
@@ -225,11 +242,15 @@ export class MegaAdapter extends BaseCloudAdapter {
 	async renameFile(fileRecord, nextName) {
 		const file = await this.findByRecord(fileRecord);
 		await file.rename(nextName);
+		this.invalidateStorage();
 	}
 
 	async deleteFile(fileRecord) {
 		const file = await this.findByRecord(fileRecord);
-		await file.delete(false);
+		const result = await file.delete(false);
+
+		this.invalidateStorage();
+		return result;
 	}
 
 	async getFileDetails(fileRecord) {
