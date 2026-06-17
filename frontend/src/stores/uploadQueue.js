@@ -246,7 +246,7 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 			}
 			}
 		},
-		async uploadFiles(files, currentPath, onCompleted) {
+		async uploadFiles(files, currentPath, onCompleted, targetAccountId = null) {
 			const entries = Array.from(files || []);
 			const batchId = createBatchId();
 			const batchTotal = entries.length;
@@ -257,12 +257,17 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 				const targetPath = buildVirtualPath(currentPath, relativePath);
 
 				try {
-					const { data } = await api.initiateUpload({
+					const payload = {
 						file_name: file.name,
 						size: file.size,
 						mime_type: file.type || 'application/octet-stream',
 						virtual_path: targetPath,
-					}, { signal: queueItem.abortController.signal });
+					};
+					if (targetAccountId && targetAccountId !== 'auto') {
+						payload.target_account_id = targetAccountId;
+					}
+
+					const { data } = await api.initiateUpload(payload, { signal: queueItem.abortController.signal });
 
 					const socket = api.createUploadSocket(data.upload_id);
 					this.updateUpload(queueItem.id, {
