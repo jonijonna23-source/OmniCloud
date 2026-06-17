@@ -22,14 +22,17 @@ import { useTrackedFileActions } from '../composables/useTrackedFileActions.js';
 import { providerLabel } from '../composables/useFormatFile.js';
 import { useFileTreeStore } from '../stores/fileTree';
 import { useUploadQueueStore } from '../stores/uploadQueue';
+import { useAccountManagementStore } from '../stores/accountManagement';
 import { api } from '../services/api';
 
 const { t } = useI18n();
 
 const fileTreeStore = useFileTreeStore();
 const uploadQueueStore = useUploadQueueStore();
+const accountStore = useAccountManagementStore();
 const { currentPath, breadcrumbs, searchTerm, isLoading } = storeToRefs(fileTreeStore);
 const { uploads, totalProgress } = storeToRefs(uploadQueueStore);
+const { accounts } = storeToRefs(accountStore);
 
 const isDragActive = ref(false);
 const dragDepth = ref(0);
@@ -38,6 +41,7 @@ const folderInputRef = ref(null);
 const lastObservedSyncAt = ref('');
 const highlightedFileId = ref(null);
 const highlightTimeout = ref(null);
+const selectedUploadAccount = ref('auto');
 
 const view = useFileListView({
 	sourceFiles: computed(() => fileTreeStore.filteredFiles),
@@ -211,7 +215,7 @@ useAutoRefresh(checkSyncStatus, { intervalMs: 20000, immediate: false });
 async function handleUploads(entries) {
 	if (!entries.length) return;
 	try {
-		await uploadQueueStore.uploadFiles(entries, currentPath.value, refreshCurrentFolder);
+		await uploadQueueStore.uploadFiles(entries, currentPath.value, refreshCurrentFolder, selectedUploadAccount.value);
 		await refreshCurrentFolder();
 	} catch {
 	}
@@ -370,7 +374,7 @@ onBeforeUnmount(() => {
 						</button>
 					</template>
 				</FileListSelectionBar>
-				<FileListFilterBar v-else :type-options="typeOptions" :owner-options="ownerOptions" :updated-options="updatedOptions" :selected-type-filter="selectedTypeFilter" :selected-owner-filter="selectedOwnerFilter" :selected-updated-filter="selectedUpdatedFilter" :active-filter-menu="activeFilterMenu" v-model:search-term="searchTerm" @toggle-filter-menu="toggleFilterMenu" @apply-filter="applyFilter" @clear-filter="clearFilter" />
+				<FileListFilterBar v-else :type-options="typeOptions" :owner-options="ownerOptions" :updated-options="updatedOptions" :selected-type-filter="selectedTypeFilter" :selected-owner-filter="selectedOwnerFilter" :selected-updated-filter="selectedUpdatedFilter" :active-filter-menu="activeFilterMenu" v-model:search-term="searchTerm" :target-account-options="accounts" v-model:selected-target-account="selectedUploadAccount" @toggle-filter-menu="toggleFilterMenu" @apply-filter="applyFilter" @clear-filter="clearFilter" />
 			</div>
 
 			<div v-if="!isGridView" class="relative">
