@@ -2,7 +2,9 @@ import dotenv from 'dotenv';
 import os from 'os';
 import crypto from 'crypto';
 
-dotenv.config();
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config();
+}
 
 const machineFingerprint = crypto
 	.createHash('sha256')
