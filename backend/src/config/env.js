@@ -1,19 +1,12 @@
 import dotenv from 'dotenv';
-import os from 'os';
 import crypto from 'crypto';
 
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
 }
 
-const machineFingerprint = crypto
-	.createHash('sha256')
-	.update(`${os.hostname()}|${os.platform()}|${os.arch()}`)
-	.digest('hex');
-
 const envHalf = process.env.OMNICLOUD_SECRET_HALF || 'omnicloud-dev-secret-half';
-const derivedKeyMaterial = `${envHalf}:${machineFingerprint}`;
-const encryptionKey = crypto.createHash('sha256').update(derivedKeyMaterial).digest();
+const encryptionKey = crypto.createHash('sha256').update(envHalf).digest();
 
 export const env = {
 	port: Number(process.env.PORT || 8787),
