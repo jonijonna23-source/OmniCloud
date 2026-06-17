@@ -29,14 +29,26 @@ export function listFilesByPath(userId, virtualPath = '/') {
         fm.*, ca.provider, ca.email
       FROM file_metadata fm
       INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
-			WHERE fm.user_id = ?
-				AND fm.virtual_path = ?
-				AND ca.status = 'active'
+      WHERE fm.user_id = ?
+        AND fm.virtual_path = ?
+        AND ca.status = 'active'
       ORDER BY fm.is_folder DESC, fm.file_name COLLATE NOCASE ASC
     `)
 		.all(userId, normalized);
 
-	return buildDisplayNames(rows);
+	const built = buildDisplayNames(rows);
+
+	// Deduplikasi folder dengan nama sama — tampilkan hanya satu
+	const seenFolders = new Set();
+	const deduped = built.filter((item) => {
+		if (!item.is_folder) return true; // file selalu tampil
+		const key = item.file_name.toLowerCase();
+		if (seenFolders.has(key)) return false; // duplikat, skip
+		seenFolders.add(key);
+		return true;
+	});
+
+	return deduped;
 }
 
 export function searchFiles(userId, term = '', limit = 50) {
@@ -261,4 +273,22 @@ export function listDirectoryTree(userId) {
       ORDER BY virtual_path, is_folder DESC, file_name
     `)
 		.all(userId);
+}
+
+export function findFoldersByNameAndPath(userId, fileName, virtualPath) {
+	const normalized = normalizePath(virtualPath);
+	const rows = db
+		.prepare(`
+      SELECT fm.*, ca.provider, ca.email
+      FROM file_metadata fm
+      INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+      WHERE fm.user_id = ?
+        AND fm.is_folder = 1
+        AND fm.file_name = ? COLLATE NOCASE
+        AND fm.virtual_path = ?
+        AND ca.status = 'active'
+    `)
+		.all(userId, fileName, normalized);
+
+	return buildDisplayNames(rows);
 }
