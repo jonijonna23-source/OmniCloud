@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId } from '../services/fileService.js';
+import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath } from '../services/fileService.js';
 import { getAccountById, getActiveAccounts } from '../services/accountService.js';
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
@@ -171,12 +171,12 @@ router.get('/files', async (req, res, next) => {
 		const files = req.query.search
 			? searchFiles(req.user.id, req.query.search, req.query.limit)
 			: req.query.starred === '1'
-			? listStarredFiles(req.user.id)
-			: req.query.recent === '1'
-				? listRecentFiles(req.user.id)
-				: req.query.shared === '1'
-					? await listSharedWithMeFiles(req.user.id)
-					: listFilesByPath(req.user.id, req.query.path || '/');
+				? listStarredFiles(req.user.id)
+				: req.query.recent === '1'
+					? listRecentFiles(req.user.id)
+					: req.query.shared === '1'
+						? await listSharedWithMeFiles(req.user.id)
+						: listFilesByPath(req.user.id, req.query.path || '/');
 		res.json({ data: files });
 	} catch (error) {
 		next(error);
@@ -360,8 +360,32 @@ router.delete('/files/:id', async (req, res, next) => {
 			return;
 		}
 
-		await deleteContextFile(req.user.id, context, req.params.id);
+		// Kalau folder, hapus semua folder dengan nama + path sama di semua provider
+		if (context.file.is_folder) {
+			const siblings = findFoldersByNameAndPath(
+				req.user.id,
+				context.file.file_name,
+				context.file.virtual_path,
+			);
 
+			const touchedAccountIds = new Set();
+			for (const sibling of siblings) {
+				const siblingContext = await getFileContext(req.user.id, sibling.id);
+				if (!siblingContext.file || !siblingContext.account || !siblingContext.adapter) continue;
+				await deleteContextFile(req.user.id, siblingContext, sibling.id, { sync: false });
+				touchedAccountIds.add(siblingContext.account.id);
+			}
+
+			for (const accountId of touchedAccountIds) {
+				const account = getAccountById(req.user.id, accountId);
+				if (account) await syncAccount(req.user.id, account);
+			}
+
+			return res.json({ data: { success: true } });
+		}
+
+		// Kalau file biasa, hapus seperti biasa
+		await deleteContextFile(req.user.id, context, req.params.id);
 		return res.json({ data: { success: true } });
 	} catch (error) {
 		next(error);
