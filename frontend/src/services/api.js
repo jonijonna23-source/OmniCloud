@@ -217,4 +217,7 @@ export const api = {
 			body: JSON.stringify(payload),
 		});
 	},
+	resolveUrl(path) {
+		return `${API_BASE_URL}${path}`;
+	},
 };
