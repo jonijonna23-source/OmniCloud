@@ -298,6 +298,31 @@ router.get('/files/:id/download', async (req, res, next) => {
 	}
 });
 
+router.get('/files/:id/direct-download', async (req, res, next) => {
+	try {
+		const context = await getFileContext(req.user.id, req.params.id);
+		if (!ensureFileContext(context, res)) {
+			return;
+		}
+
+		if (context.file.is_folder) {
+			return res.json({ use_stream: true });
+		}
+
+		const { supportsDirectDownload } = await import('../utils/directTransfer.js');
+		if (supportsDirectDownload(context.account.provider)) {
+			if (typeof context.adapter.getDirectDownloadUrl === 'function') {
+				const result = await context.adapter.getDirectDownloadUrl(context.file);
+				return res.json({ data: result });
+			}
+		}
+
+		return res.json({ data: { url: null, use_stream: true } });
+	} catch (error) {
+		next(error);
+	}
+});
+
 router.get('/files/:id/preview', async (req, res, next) => {
 	try {
 		const context = await getFileContext(req.user.id, req.params.id);

@@ -409,4 +409,50 @@ export class OneDriveAdapter extends BaseCloudAdapter {
 			provider: 'onedrive',
 		};
 	}
+
+	async getDirectDownloadUrl(fileRecord) {
+		try {
+			const remote = await this.getItem(fileRecord.remote_file_id);
+			const url = remote['@microsoft.graph.downloadUrl'];
+			if (url) {
+				return {
+					url,
+					expires_at: null, // Short-lived but sufficient for immediate download
+				};
+			}
+			return { use_stream: true };
+		} catch (error) {
+			return { use_stream: true };
+		}
+	}
+
+	async createUploadSession({ fileName, size, mimeType, virtualPath, remoteParentId }) {
+		try {
+			const parentId = remoteParentId || await this.ensureRemotePath(virtualPath);
+			const uploadPath = `/me/drive/items/${encodeURIComponent(parentId)}:/${encodePathSegment(fileName)}:/createUploadSession`;
+			
+			const payload = await this.graph(uploadPath, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					item: {
+						'@microsoft.graph.conflictBehavior': 'rename',
+						name: fileName
+					}
+				}),
+			});
+
+			if (payload.uploadUrl) {
+				return {
+					upload_url: payload.uploadUrl,
+					expires_at: payload.expirationDateTime ? new Date(payload.expirationDateTime).getTime() : null,
+				};
+			}
+			return { use_stream: true };
+		} catch (error) {
+			return { use_stream: true };
+		}
+	}
 }

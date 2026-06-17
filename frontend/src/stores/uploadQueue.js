@@ -177,20 +177,57 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 			const batchTotal = downloadableFiles.length;
 
 			for (const file of downloadableFiles) {
-			const abortController = new AbortController();
+				const abortController = new AbortController();
 
-			const queueItem = this.registerOperation({
-				type: 'download',
-				name: file.display_name || file.file_name,
-				size: file.size || 0,
-				status: 'downloading',
-				abortController,
-				batchId,
-				batchTotal,
-			});
+				const queueItem = this.registerOperation({
+					type: 'download',
+					name: file.display_name || file.file_name,
+					size: file.size || 0,
+					status: 'downloading',
+					abortController,
+					batchId,
+					batchTotal,
+				});
 
-			try {
-				const response = await fetch(api.downloadUrl(file.id), { signal: abortController.signal });
+				try {
+					// 1. Cek direct download URL
+					const directResponse = await fetch(api.resolveUrl(`/files/${file.id}/direct-download`), {
+						headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+					}).catch(() => null);
+
+					let directUrl = null;
+					let useStream = true;
+					
+					if (directResponse && directResponse.ok) {
+						const directData = await directResponse.json();
+						if (directData?.data?.url) {
+							directUrl = directData.data.url;
+							useStream = false;
+						} else if (directData?.data?.use_stream) {
+							useStream = true;
+						}
+					}
+
+					if (directUrl && !useStream) {
+						// 2. Gunakan direct download
+						const link = document.createElement('a');
+						link.href = directUrl;
+						// Try to force download if the provider responds with Content-Disposition
+						link.download = file.display_name || file.file_name || 'download';
+						link.target = '_blank'; // Some browsers block downloads if not _blank on cross-origin
+						document.body.appendChild(link);
+						link.click();
+						link.remove();
+						
+						this.updateUpload(queueItem.id, {
+							progress_percentage: 100,
+							status: 'completed',
+						});
+						continue;
+					}
+
+					// 3. Fallback to stream (Flow lama)
+					const response = await fetch(api.downloadUrl(file.id), { signal: abortController.signal });
 				if (!response.ok) {
 					const payload = await response.json().catch(() => ({ error: 'Download failed' }));
 					throw new Error(payload.error || 'Download failed');
@@ -267,6 +304,79 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 						payload.target_account_id = targetAccountId;
 					}
 
+					// Coba initiate direct transfer
+					const initiateResponse = await fetch(api.resolveUrl('/uploads/initiate-direct'), {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `Bearer ${localStorage.getItem('token')}`
+						},
+						body: JSON.stringify(payload),
+						signal: queueItem.abortController.signal,
+					}).catch(() => null);
+
+					let directData = null;
+					if (initiateResponse && initiateResponse.ok) {
+						const result = await initiateResponse.json();
+						directData = result.data;
+					}
+
+					// Kalau support direct upload
+					if (directData && directData.upload_url && !directData.use_stream) {
+						this.updateUpload(queueItem.id, { status: 'uploading' });
+						
+						try {
+							const { useDirectUpload } = await import('../composables/useDirectUpload.js');
+							const { uploadFileDirect } = useDirectUpload();
+							
+							const uploadResult = await uploadFileDirect({
+								uploadUrl: directData.upload_url,
+								file,
+								onProgress: (percent) => {
+									this.updateUpload(queueItem.id, {
+										progress_percentage: percent,
+										status: 'uploading'
+									});
+								},
+								signal: queueItem.abortController.signal,
+							});
+
+							// Berhasil upload direct, panggil complete
+							const completeResponse = await fetch(api.resolveUrl('/uploads/direct-complete'), {
+								method: 'POST',
+								headers: {
+									'Content-Type': 'application/json',
+									Authorization: `Bearer ${localStorage.getItem('token')}`
+								},
+								body: JSON.stringify({
+									upload_id: directData.upload_id || null, // OneDrive/Dropbox doesn't have local upload_id
+									remote_file_id: uploadResult?.id || directData.remoteFileId || directData.upload_url,
+									cloud_account_id: directData.target_account_id,
+									file_name: file.name,
+									size: file.size,
+									mime_type: file.type || 'application/octet-stream',
+									virtual_path: targetPath,
+									remote_parent_id: directData.remoteParentId || null,
+								}),
+								signal: queueItem.abortController.signal,
+							});
+
+							if (!completeResponse.ok) throw new Error('Failed to complete direct upload');
+
+							this.updateUpload(queueItem.id, {
+								progress_percentage: 100,
+								status: 'completed',
+							});
+							onCompleted?.();
+							continue;
+						} catch (directError) {
+							if (isAbortError(directError)) throw directError;
+							console.warn('Direct upload failed, falling back to stream', directError);
+							// Lanjut ke fallback stream
+						}
+					}
+
+					// Fallback ke stream lama
 					const { data } = await api.initiateUpload(payload, { signal: queueItem.abortController.signal });
 
 					const socket = api.createUploadSocket(data.upload_id);

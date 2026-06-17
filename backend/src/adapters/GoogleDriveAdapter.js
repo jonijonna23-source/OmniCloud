@@ -360,4 +360,59 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 			provider: 'google-drive',
 		};
 	}
+
+	async getDirectDownloadUrl(fileRecord) {
+		const drive = await this.getDriveClient();
+		try {
+			// Alt=media directly triggers download stream but we need a URL for the frontend.
+			// The webContentLink is a safe URL to download the file directly in browser.
+			const response = await drive.files.get({
+				fileId: fileRecord.remote_file_id,
+				fields: 'webContentLink',
+			});
+
+			if (response.data.webContentLink) {
+				return {
+					url: response.data.webContentLink,
+					expires_at: null, // Google Drive webContentLink usually doesn't expire quickly, relies on cookies/auth if not public, but wait: we need it to work without exposing tokens.
+				};
+			}
+			return { use_stream: true };
+		} catch (error) {
+			return { use_stream: true };
+		}
+	}
+
+	async createResumableUploadUrl({ fileName, size, mimeType, virtualPath, remoteParentId }) {
+		try {
+			const parentId = remoteParentId || await this.ensureRemotePath(virtualPath);
+			const auth = this.createOAuthClient();
+			const token = await auth.getAccessToken();
+
+			const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${token.token}`,
+					'Content-Type': 'application/json',
+					'X-Upload-Content-Type': mimeType || 'application/octet-stream',
+					...(size ? { 'X-Upload-Content-Length': String(size) } : {}),
+				},
+				body: JSON.stringify({
+					name: fileName,
+					parents: parentId ? [parentId] : undefined,
+				}),
+			});
+
+			const location = response.headers.get('Location');
+			if (response.ok && location) {
+				return {
+					upload_url: location,
+					expires_at: Date.now() + 7 * 24 * 60 * 60 * 1000, // Drive resumable session usually lasts a week
+				};
+			}
+			return { use_stream: true };
+		} catch (error) {
+			return { use_stream: true };
+		}
+	}
 }

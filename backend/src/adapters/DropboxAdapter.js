@@ -333,4 +333,28 @@ export class DropboxAdapter extends BaseCloudAdapter {
 			provider: 'dropbox',
 		};
 	}
+
+	async getDirectDownloadUrl(fileRecord) {
+		try {
+			const payload = await this.rpc('/files/get_temporary_link', {
+				path: fileRecord.remote_file_id || joinDropboxPath(fileRecord.virtual_path, fileRecord.file_name),
+			});
+
+			if (payload.link) {
+				return {
+					url: payload.link,
+					expires_at: Date.now() + 4 * 60 * 60 * 1000, // Dropbox temp links are valid for 4 hours
+				};
+			}
+			return { use_stream: true };
+		} catch (error) {
+			return { use_stream: true };
+		}
+	}
+
+	async createUploadSession() {
+		// Dropbox chunked upload session API requires Authorization headers with the access token,
+		// which we cannot safely give to the frontend.
+		return { use_stream: true };
+	}
 }
