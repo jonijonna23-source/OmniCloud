@@ -13,11 +13,21 @@ const router = Router();
 
 function setAuthCookie(res, token) {
 	const options = res.locals.authCookieOptions || {};
+	
+	// PAKSA PENGATURAN LINTAS DOMAIN (CROSS-ORIGIN) DI SINI
+	options.sameSite = 'None';
+	options.secure = true;
+	
 	res.cookie(env.authCookieName, token, options);
 }
 
 function clearAuthCookie(res) {
 	const options = res.locals.authCookieOptions || {};
+	
+	// PASTIKAN PENGHAPUSAN COOKIE JUGA MENGGUNAKAN ATURAN YANG SAMA
+	options.sameSite = 'None';
+	options.secure = true;
+	
 	res.clearCookie(env.authCookieName, { ...options, maxAge: 0 });
 }
 
