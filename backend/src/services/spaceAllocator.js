@@ -94,7 +94,7 @@ function selectManual(accounts, requiredBytes) {
 	return accounts.find((account) => account.freeSpace >= requiredBytes) || accounts[0];
 }
 
-export function selectBestAccount(userId, requiredBytes = 0) {
+export function selectBestAccount(userId, requiredBytes = 0, targetAccountId = null) {
 	const required = Number(requiredBytes) || 0;
 	const { strategy } = getAllocationConfig(userId);
 	const accounts = getOrderedActiveAccounts(userId).map(withFreeSpace);
@@ -104,23 +104,31 @@ export function selectBestAccount(userId, requiredBytes = 0) {
 	}
 
 	let selected;
-	switch (strategy) {
-		case 'round_robin':
-			selected = selectRoundRobin(userId, accounts, required);
-			break;
-		case 'weighted_round_robin':
-			selected = selectWeightedRoundRobin(userId, accounts, required);
-			break;
-		case 'least_used':
-			selected = selectLeastUsed(accounts, required);
-			break;
-		case 'manual':
-			selected = selectManual(accounts, required);
-			break;
-		case 'most_free':
-		default:
-			selected = selectMostFree(accounts);
-			break;
+
+	if (targetAccountId) {
+		selected = accounts.find((account) => account.id === targetAccountId);
+		if (!selected) {
+			throw new Error('Target account not found or inactive');
+		}
+	} else {
+		switch (strategy) {
+			case 'round_robin':
+				selected = selectRoundRobin(userId, accounts, required);
+				break;
+			case 'weighted_round_robin':
+				selected = selectWeightedRoundRobin(userId, accounts, required);
+				break;
+			case 'least_used':
+				selected = selectLeastUsed(accounts, required);
+				break;
+			case 'manual':
+				selected = selectManual(accounts, required);
+				break;
+			case 'most_free':
+			default:
+				selected = selectMostFree(accounts);
+				break;
+		}
 	}
 
 	return buildResult(selected, accounts);
