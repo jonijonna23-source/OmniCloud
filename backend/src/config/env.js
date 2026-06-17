@@ -11,13 +11,13 @@ const encryptionKey = crypto.createHash('sha256').update(envHalf).digest();
 export const env = {
 	port: Number(process.env.PORT || 8787),
 	appMode: process.env.APP_MODE === 'hosted' ? 'hosted' : 'local',
-	corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+	corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) : ['http://localhost:5173', 'https://roscloud.vercel.app'],
 	syncIntervalMinutes: Number(process.env.SYNC_INTERVAL_MINUTES || 5),
 	authCookieName: process.env.AUTH_COOKIE_NAME || 'omnicloud_session',
 	authSessionTtlHours: Number(process.env.AUTH_SESSION_TTL_HOURS || 24 * 14),
 	authSecret: process.env.AUTH_SECRET || process.env.OMNICLOUD_SECRET_HALF || 'omnicloud-dev-auth-secret',
 	encryptionKey,
-	frontendUrl: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+	frontendUrl: process.env.FRONTEND_URL || (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',')[0].trim() : 'http://localhost:5173'),
 	googleClientId: process.env.GOOGLE_CLIENT_ID || '',
 	googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
 	googleRedirectUri:
