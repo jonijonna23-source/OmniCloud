@@ -304,21 +304,24 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 						payload.target_account_id = targetAccountId;
 					}
 
-					// Coba initiate direct transfer
-					const initiateResponse = await fetch(api.resolveUrl('/uploads/initiate-direct'), {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Authorization: `Bearer ${localStorage.getItem('token')}`
-						},
-						body: JSON.stringify(payload),
-						signal: queueItem.abortController.signal,
-					}).catch(() => null);
-
 					let directData = null;
-					if (initiateResponse && initiateResponse.ok) {
-						const result = await initiateResponse.json();
-						directData = result.data;
+
+					if (file.size > 50 * 1024 * 1024) {
+						// Coba initiate direct transfer
+						const initiateResponse = await fetch(api.resolveUrl('/uploads/initiate-direct'), {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								Authorization: `Bearer ${localStorage.getItem('token')}`
+							},
+							body: JSON.stringify(payload),
+							signal: queueItem.abortController.signal,
+						}).catch(() => null);
+
+						if (initiateResponse && initiateResponse.ok) {
+							const result = await initiateResponse.json();
+							directData = result.data;
+						}
 					}
 
 					// Kalau support direct upload
