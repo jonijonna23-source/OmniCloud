@@ -242,7 +242,7 @@ router.post('/files/bulk/delete', async (req, res, next) => {
 		}
 
 		const touchedAccountIds = new Set();
-		
+
 		// Hapus semua paralel
 		await Promise.all(contexts.map(async (context) => {
 			await deleteContextFile(req.user.id, context, context.id, { sync: false });
@@ -396,7 +396,7 @@ router.delete('/files/:id', async (req, res, next) => {
 			);
 
 			const touchedAccountIds = new Set();
-			
+
 			// Hapus paralel, bukan sequential
 			await Promise.all(siblings.map(async (sibling) => {
 				const siblingContext = await getFileContext(req.user.id, sibling.id);
@@ -413,13 +413,13 @@ router.delete('/files/:id', async (req, res, next) => {
 				const account = getAccountById(req.user.id, accountId);
 				return account ? syncAccount(req.user.id, account) : Promise.resolve();
 			})).catch(err => console.error('Background sync error:', err));
-			
+
 			return;
 		}
 
 		// Kalau file biasa, hapus seperti biasa (sync di background)
 		await deleteContextFile(req.user.id, context, req.params.id, { sync: false });
-		
+
 		// Return response langsung
 		res.json({ data: { success: true } });
 
