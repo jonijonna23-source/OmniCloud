@@ -294,6 +294,7 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 				const targetPath = buildVirtualPath(currentPath, relativePath);
 
 				try {
+					console.time(`total-upload-${file.name}`);
 					const payload = {
 						file_name: file.name,
 						size: file.size,
@@ -380,8 +381,11 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 					}
 
 					// Fallback ke stream lama
+					console.time(`initiate-${file.name}`);
 					const { data } = await api.initiateUpload(payload, { signal: queueItem.abortController.signal });
+					console.timeEnd(`initiate-${file.name}`);
 
+					console.time(`stream-${file.name}`);
 					const socket = api.createUploadSocket(data.upload_id);
 					this.updateUpload(queueItem.id, {
 						status: 'uploading',
@@ -406,6 +410,8 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 								status: 'completed',
 							});
 							socket.close();
+							console.timeEnd(`stream-${file.name}`);
+							console.timeEnd(`total-upload-${file.name}`);
 							onCompleted?.();
 						}
 
@@ -415,6 +421,8 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 								error: message.message,
 							});
 							socket.close();
+							console.timeEnd(`stream-${file.name}`);
+							console.timeEnd(`total-upload-${file.name}`);
 						}
 					};
 
@@ -423,10 +431,13 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 							status: 'failed',
 							error: 'WebSocket connection failed',
 						});
+						console.timeEnd(`stream-${file.name}`);
+						console.timeEnd(`total-upload-${file.name}`);
 					};
 
 					await api.uploadFile(data.upload_id, file, { signal: queueItem.abortController.signal });
 				} catch (error) {
+					console.timeEnd(`total-upload-${file.name}`);
 					if (isAbortError(error) || queueItem.abortController.signal.aborted) {
 						this.updateUpload(queueItem.id, {
 							status: 'cancelled',

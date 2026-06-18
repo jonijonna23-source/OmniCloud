@@ -92,7 +92,7 @@ async function pipeUpload({ req, session }) {
 					remote_parent_id: uploadResponse.remoteParentId,
 				});
 
-				await syncAccount(session.user_id, account);
+				syncAccount(session.user_id, account).catch(err => console.error('Background sync failed after stream upload', err));
 				metadata = getFileByRemoteId(session.user_id, account.id, uploadResponse.remoteFileId) || metadata;
 
 				updateUploadSession(session.id, { status: 'completed', cloud_account_id: account.id });
