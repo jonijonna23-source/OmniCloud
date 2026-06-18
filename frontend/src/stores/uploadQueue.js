@@ -169,10 +169,6 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 		async downloadFile(file) {
 			return this.downloadFiles(file ? [file] : []);
 		},
-		
-		// -----------------------------------------------------------
-		// VERSI BARU: Fungsi Download (Mempertahankan Direct Download)
-		// -----------------------------------------------------------
 		async downloadFiles(files) {
 			const downloadableFiles = files.filter((file) => file && !file.is_folder);
 			if (!downloadableFiles.length) return;
@@ -237,66 +233,62 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 						credentials: 'include',
 						headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
 					});
-					if (!response.ok) {
-						const payload = await response.json().catch(() => ({ error: 'Download failed' }));
-						throw new Error(payload.error || 'Download failed');
-					}
-
-					const contentLength = Number(response.headers.get('Content-Length')) || file.size || 0;
-					const reader = response.body?.getReader();
-					const chunks = [];
-					let received = 0;
-
-					if (reader) {
-						while (true) {
-							if (abortController.signal.aborted) throw new DOMException('Download cancelled', 'AbortError');
-							const { done, value } = await reader.read();
-							if (done) break;
-							chunks.push(value);
-							received += value.length;
-							const percent = contentLength ? Math.min(99, Math.round((received / contentLength) * 100)) : 50;
-							this.updateUpload(queueItem.id, { progress_percentage: percent });
-						}
-					} else {
-						chunks.push(await response.blob());
-					}
-
-					const blob = chunks[0] instanceof Blob ? chunks[0] : new Blob(chunks);
-					const url = URL.createObjectURL(blob);
-					const link = document.createElement('a');
-					link.href = url;
-					link.download = file.display_name || file.file_name || 'download';
-					document.body.appendChild(link);
-					link.click();
-					link.remove();
-					URL.revokeObjectURL(url);
-
-					this.updateUpload(queueItem.id, {
-						progress_percentage: 100,
-						status: 'completed',
-					});
-				} catch (error) {
-					if (isAbortError(error)) {
-						this.updateUpload(queueItem.id, {
-							status: 'cancelled',
-							error: null,
-						});
-						return;
-					}
-
-					this.updateUpload(queueItem.id, {
-						status: 'failed',
-						error: error.message,
-					});
-					if (batchTotal === 1) throw error;
+				if (!response.ok) {
+					const payload = await response.json().catch(() => ({ error: 'Download failed' }));
+					throw new Error(payload.error || 'Download failed');
 				}
+
+				const contentLength = Number(response.headers.get('Content-Length')) || file.size || 0;
+				const reader = response.body?.getReader();
+				const chunks = [];
+				let received = 0;
+
+				if (reader) {
+					while (true) {
+						if (abortController.signal.aborted) throw new DOMException('Download cancelled', 'AbortError');
+						const { done, value } = await reader.read();
+						if (done) break;
+						chunks.push(value);
+						received += value.length;
+						const percent = contentLength ? Math.min(99, Math.round((received / contentLength) * 100)) : 50;
+						this.updateUpload(queueItem.id, { progress_percentage: percent });
+					}
+				} else {
+					chunks.push(await response.blob());
+				}
+
+				const blob = chunks[0] instanceof Blob ? chunks[0] : new Blob(chunks);
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement('a');
+				link.href = url;
+				link.download = file.display_name || file.file_name || 'download';
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+				URL.revokeObjectURL(url);
+
+				this.updateUpload(queueItem.id, {
+					progress_percentage: 100,
+					status: 'completed',
+				});
+			} catch (error) {
+				if (isAbortError(error)) {
+					this.updateUpload(queueItem.id, {
+						status: 'cancelled',
+						error: null,
+					});
+					return;
+				}
+
+				this.updateUpload(queueItem.id, {
+					status: 'failed',
+					error: error.message,
+				});
+				if (batchTotal === 1) throw error;
+			}
 			}
 		},
-
-		// -----------------------------------------------------------
-		// VERSI LAMA: Fungsi Upload (Murni WebSocket, Anti-CORS Error)
-		// -----------------------------------------------------------
-		async uploadFiles(files, currentPath, onCompleted) {
+		async uploadFiles(files, currentPath, onCompleted, targetAccountId = null) {
 			const entries = Array.from(files || []);
 			const batchId = createBatchId();
 			const batchTotal = entries.length;
@@ -307,13 +299,98 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 				const targetPath = buildVirtualPath(currentPath, relativePath);
 
 				try {
-					const { data } = await api.initiateUpload({
+					console.time(`total-upload-${file.name}`);
+					const payload = {
 						file_name: file.name,
 						size: file.size,
 						mime_type: file.type || 'application/octet-stream',
 						virtual_path: targetPath,
-					}, { signal: queueItem.abortController.signal });
+					};
+					if (targetAccountId && targetAccountId !== 'auto') {
+						payload.target_account_id = targetAccountId;
+					}
 
+					let directData = null;
+
+					if (file.size > 50 * 1024 * 1024) {
+						// Coba initiate direct transfer
+						const initiateResponse = await fetch(api.resolveUrl('/uploads/initiate-direct'), {
+							method: 'POST',
+							credentials: 'include',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify(payload),
+							signal: queueItem.abortController.signal,
+						}).catch(() => null);
+
+						if (initiateResponse && initiateResponse.ok) {
+							const result = await initiateResponse.json();
+							directData = result.data;
+						}
+					}
+
+					// Kalau support direct upload
+					if (directData && directData.upload_url && !directData.use_stream) {
+						this.updateUpload(queueItem.id, { status: 'uploading' });
+						
+						try {
+							const { useDirectUpload } = await import('../composables/useDirectUpload.js');
+							const { uploadFileDirect } = useDirectUpload();
+							
+							const uploadResult = await uploadFileDirect({
+								uploadUrl: directData.upload_url,
+								file,
+								onProgress: (percent) => {
+									this.updateUpload(queueItem.id, {
+										progress_percentage: percent,
+										status: 'uploading'
+									});
+								},
+								signal: queueItem.abortController.signal,
+							});
+
+							// Berhasil upload direct, panggil complete
+							const completeResponse = await fetch(api.resolveUrl('/uploads/direct-complete'), {
+								method: 'POST',
+								credentials: 'include',
+								headers: {
+									'Content-Type': 'application/json'
+								},
+								body: JSON.stringify({
+									upload_id: directData.upload_id || null, // OneDrive/Dropbox doesn't have local upload_id
+									remote_file_id: uploadResult?.id || directData.remoteFileId || directData.upload_url,
+									cloud_account_id: directData.target_account_id,
+									file_name: file.name,
+									size: file.size,
+									mime_type: file.type || 'application/octet-stream',
+									virtual_path: targetPath,
+									remote_parent_id: directData.remoteParentId || null,
+								}),
+								signal: queueItem.abortController.signal,
+							});
+
+							if (!completeResponse.ok) throw new Error('Failed to complete direct upload');
+
+							this.updateUpload(queueItem.id, {
+								progress_percentage: 100,
+								status: 'completed',
+							});
+							onCompleted?.();
+							continue;
+						} catch (directError) {
+							if (isAbortError(directError)) throw directError;
+							console.warn('Direct upload failed, falling back to stream', directError);
+							// Lanjut ke fallback stream
+						}
+					}
+
+					// Fallback ke stream lama
+					console.time(`initiate-${file.name}`);
+					const { data } = await api.initiateUpload(payload, { signal: queueItem.abortController.signal });
+					console.timeEnd(`initiate-${file.name}`);
+
+					console.time(`stream-${file.name}`);
 					const socket = api.createUploadSocket(data.upload_id);
 					this.updateUpload(queueItem.id, {
 						status: 'uploading',
@@ -338,6 +415,8 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 								status: 'completed',
 							});
 							socket.close();
+							console.timeEnd(`stream-${file.name}`);
+							console.timeEnd(`total-upload-${file.name}`);
 							onCompleted?.();
 						}
 
@@ -347,6 +426,8 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 								error: message.message,
 							});
 							socket.close();
+							console.timeEnd(`stream-${file.name}`);
+							console.timeEnd(`total-upload-${file.name}`);
 						}
 					};
 
@@ -355,10 +436,13 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 							status: 'failed',
 							error: 'WebSocket connection failed',
 						});
+						console.timeEnd(`stream-${file.name}`);
+						console.timeEnd(`total-upload-${file.name}`);
 					};
 
 					await api.uploadFile(data.upload_id, file, { signal: queueItem.abortController.signal });
 				} catch (error) {
+					console.timeEnd(`total-upload-${file.name}`);
 					if (isAbortError(error) || queueItem.abortController.signal.aborted) {
 						this.updateUpload(queueItem.id, {
 							status: 'cancelled',
