@@ -192,7 +192,8 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 				try {
 					// 1. Cek direct download URL
 					const directResponse = await fetch(api.resolveUrl(`/files/${file.id}/direct-download`), {
-						headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+						credentials: 'include',
+						signal: abortController.signal
 					}).catch(() => null);
 
 					let directUrl = null;
@@ -227,7 +228,11 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 					}
 
 					// 3. Fallback to stream (Flow lama)
-					const response = await fetch(api.downloadUrl(file.id), { signal: abortController.signal });
+					const response = await fetch(api.downloadUrl(file.id), {
+						signal: abortController.signal,
+						credentials: 'include',
+						headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+					});
 				if (!response.ok) {
 					const payload = await response.json().catch(() => ({ error: 'Download failed' }));
 					throw new Error(payload.error || 'Download failed');
@@ -311,9 +316,9 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 						// Coba initiate direct transfer
 						const initiateResponse = await fetch(api.resolveUrl('/uploads/initiate-direct'), {
 							method: 'POST',
+							credentials: 'include',
 							headers: {
-								'Content-Type': 'application/json',
-								Authorization: `Bearer ${localStorage.getItem('token')}`
+								'Content-Type': 'application/json'
 							},
 							body: JSON.stringify(payload),
 							signal: queueItem.abortController.signal,
@@ -348,9 +353,9 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 							// Berhasil upload direct, panggil complete
 							const completeResponse = await fetch(api.resolveUrl('/uploads/direct-complete'), {
 								method: 'POST',
+								credentials: 'include',
 								headers: {
-									'Content-Type': 'application/json',
-									Authorization: `Bearer ${localStorage.getItem('token')}`
+									'Content-Type': 'application/json'
 								},
 								body: JSON.stringify({
 									upload_id: directData.upload_id || null, // OneDrive/Dropbox doesn't have local upload_id
