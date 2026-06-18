@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
 	IconArrowRight,
@@ -28,6 +28,12 @@ const emit = defineEmits(['close', 'close-item']);
 
 const isDismissed = ref(false);
 const isMinimized = ref(false);
+
+watch(() => props.uploads.length, (newLength, oldLength) => {
+	if (newLength > (oldLength || 0)) {
+		isDismissed.value = false;
+	}
+});
 
 const rawUploads = computed(() => props.uploads);
 const visibleUploads = computed(() => {
@@ -103,7 +109,6 @@ const summaryText = computed(() => {
 
 function closeToast() {
 	isDismissed.value = true;
-	emit('close');
 }
 
 function formatStatus(upload) {
