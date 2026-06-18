@@ -279,12 +279,36 @@ router.get('/files/:id', async (req, res, next) => {
 	}
 });
 
+// ----------------------------------------------------------------------
+// IMPLEMENTASI MASTER PLAN: Redirect 302 dengan Fallback ke Stream
+// ----------------------------------------------------------------------
 router.get('/files/:id/download', async (req, res, next) => {
 	try {
 		const context = await getFileContext(req.user.id, req.params.id);
 		if (!ensureFileContext(context, res)) {
 			return;
 		}
+
+		const provider = context.account.provider;
+		const supportsDirect = ['google_drive', 'onedrive', 'dropbox'].includes(provider);
+
+		if (supportsDirect && !context.file.is_folder) {
+			try {
+				// Minta temporary URL dari provider
+				if (typeof context.adapter.getTemporaryDownloadUrl === 'function') {
+					const { url } = await context.adapter.getTemporaryDownloadUrl(context.file);
+					
+					// Redirect browser langsung ke provider
+					// File tidak lewat Railway sama sekali!
+					return res.redirect(302, url);
+				}
+			} catch (directError) {
+				// Kalau gagal, fallback ke stream biasa
+				console.warn(`Direct download failed for ${provider}, falling back to stream:`, directError.message);
+			}
+		}
+
+		// Fallback: stream lewat Railway (untuk MEGA dan error)
 		const stream = await context.adapter.getDownloadStream(context.file);
 
 		res.setHeader('Content-Disposition', `attachment; filename="${context.file.file_name}"`);
