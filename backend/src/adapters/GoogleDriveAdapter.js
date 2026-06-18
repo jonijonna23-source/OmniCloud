@@ -361,23 +361,37 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 		};
 	}
 
-	async getDirectDownloadUrl(fileRecord) {
-		const drive = await this.getDriveClient();
+	// ----------------------------------------------------------------------
+	// IMPLEMENTASI MASTER PLAN: Fungsi Baru untuk Temporary/Direct Download
+	// ----------------------------------------------------------------------
+	async getTemporaryDownloadUrl(fileRecord) {
 		try {
-			// Alt=media directly triggers download stream but we need a URL for the frontend.
-			// The webContentLink is a safe URL to download the file directly in browser.
-			const response = await drive.files.get({
-				fileId: fileRecord.remote_file_id,
-				fields: 'webContentLink',
-			});
+			const auth = this.createOAuthClient();
+			// Mengambil token yang paling *fresh* (Google Auth library otomatis me-refresh token jika kedaluwarsa)
+			const { token } = await auth.getAccessToken();
 
-			if (response.data.webContentLink) {
-				return {
-					url: response.data.webContentLink,
-					expires_at: null, // Google Drive webContentLink usually doesn't expire quickly, relies on cookies/auth if not public, but wait: we need it to work without exposing tokens.
-				};
+			if (!token) {
+				throw new Error('Gagal mendapatkan access token untuk Direct Download');
 			}
-			return { use_stream: true };
+
+			return {
+				url: `https://www.googleapis.com/drive/v3/files/${fileRecord.remote_file_id}?alt=media&access_token=${token}`,
+				expires_in: 3600 // Rata-rata token Google Drive aktif selama 1 jam
+			};
+		} catch (error) {
+			console.error('[GoogleDriveAdapter] Temporary URL Error:', error);
+			throw error;
+		}
+	}
+
+	async getDirectDownloadUrl(fileRecord) {
+		try {
+			const temp = await this.getTemporaryDownloadUrl(fileRecord);
+			return {
+				url: temp.url,
+				expires_at: Date.now() + (temp.expires_in * 1000),
+				use_stream: false
+			};
 		} catch (error) {
 			return { use_stream: true };
 		}
