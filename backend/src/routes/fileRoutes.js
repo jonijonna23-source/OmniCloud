@@ -242,19 +242,21 @@ router.post('/files/bulk/delete', async (req, res, next) => {
 		}
 
 		const touchedAccountIds = new Set();
-		for (const context of contexts) {
+		
+		// Hapus semua paralel
+		await Promise.all(contexts.map(async (context) => {
 			await deleteContextFile(req.user.id, context, context.id, { sync: false });
 			touchedAccountIds.add(context.account.id);
-		}
+		}));
 
-		for (const accountId of touchedAccountIds) {
+		// Return response dulu
+		res.json({ data: { success: true, count: contexts.length } });
+
+		// Sync background paralel
+		Promise.all([...touchedAccountIds].map(accountId => {
 			const account = getAccountById(req.user.id, accountId);
-			if (account) {
-				await syncAccount(req.user.id, account);
-			}
-		}
-
-		return res.json({ data: { success: true, count: contexts.length } });
+			return account ? syncAccount(req.user.id, account) : Promise.resolve();
+		})).catch(err => console.error('Background sync error:', err));
 	} catch (error) {
 		next(error);
 	}
@@ -394,24 +396,36 @@ router.delete('/files/:id', async (req, res, next) => {
 			);
 
 			const touchedAccountIds = new Set();
-			for (const sibling of siblings) {
+			
+			// Hapus paralel, bukan sequential
+			await Promise.all(siblings.map(async (sibling) => {
 				const siblingContext = await getFileContext(req.user.id, sibling.id);
-				if (!siblingContext.file || !siblingContext.account || !siblingContext.adapter) continue;
+				if (!siblingContext.file || !siblingContext.account || !siblingContext.adapter) return;
 				await deleteContextFile(req.user.id, siblingContext, sibling.id, { sync: false });
 				touchedAccountIds.add(siblingContext.account.id);
-			}
+			}));
 
-			for (const accountId of touchedAccountIds) {
+			// Return response DULU ke frontend
+			res.json({ data: { success: true } });
+
+			// Sync jalan di background paralel
+			Promise.all([...touchedAccountIds].map(accountId => {
 				const account = getAccountById(req.user.id, accountId);
-				if (account) await syncAccount(req.user.id, account);
-			}
-
-			return res.json({ data: { success: true } });
+				return account ? syncAccount(req.user.id, account) : Promise.resolve();
+			})).catch(err => console.error('Background sync error:', err));
+			
+			return;
 		}
 
-		// Kalau file biasa, hapus seperti biasa
-		await deleteContextFile(req.user.id, context, req.params.id);
-		return res.json({ data: { success: true } });
+		// Kalau file biasa, hapus seperti biasa (sync di background)
+		await deleteContextFile(req.user.id, context, req.params.id, { sync: false });
+		
+		// Return response langsung
+		res.json({ data: { success: true } });
+
+		// Sync di background
+		syncAccount(req.user.id, context.account)
+			.catch(err => console.error('Background sync error:', err));
 	} catch (error) {
 		next(error);
 	}
