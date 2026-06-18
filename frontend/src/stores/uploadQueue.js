@@ -1,8 +1,3 @@
-Berikut adalah hasil penggabungan (merge) yang sudah disesuaikan. Kode ini menggunakan **fungsi `downloadFiles` versi terbaru** (yang mendukung *Direct Download* untuk menghemat biaya *egress*) dan **fungsi `uploadFiles` versi lama** (yang menggunakan murni *WebSocket* ke *backend* untuk menghindari error CORS).
-
-Silakan langsung salin dan timpa seluruh isi file `frontend/src/stores/uploadQueue.js` kamu dengan kode di bawah ini:
-
-```javascript
 import { defineStore } from 'pinia';
 import { api } from '../services/api';
 
@@ -381,5 +376,3 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 		},
 	},
 });
-
-```
