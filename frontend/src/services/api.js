@@ -58,8 +58,10 @@ export const settingsApi = {
 };
 
 export const api = {
-	listFiles(virtualPath = '/') {
-		const query = new URLSearchParams({ path: virtualPath }).toString();
+	listFiles(virtualPath = '/', cloudAccountId = null) {
+		const params = { path: virtualPath };
+		if (cloudAccountId) params.cloud_account_id = cloudAccountId;
+		const query = new URLSearchParams(params).toString();
 		return request(`/files?${query}`);
 	},
 	searchFiles(term, limit = 50) {

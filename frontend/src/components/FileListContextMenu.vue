@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconFolder, IconStar, IconStarFilled, IconEye, IconDownload, IconEdit, IconInfoCircle, IconTrash, IconArrowRight, IconCopy } from '@tabler/icons-vue';
 
@@ -23,6 +23,50 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['open-folder', 'preview', 'toggle-star', 'download', 'rename', 'move', 'copy', 'show-details', 'delete', 'close']);
+
+// Smart positioning: ukur menu, clamp dalam viewport, flip ke atas/kiri bila ruang kurang.
+const menuEl = ref(null);
+const posX = ref(0);
+const posY = ref(0);
+const positioned = ref(false);
+const MENU_PADDING = 12;
+
+async function reposition() {
+	positioned.value = false;
+	await nextTick();
+	const el = menuEl.value;
+	if (!el) return;
+
+	const rect = el.getBoundingClientRect();
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	let x = props.contextMenu.x;
+	let y = props.contextMenu.y;
+
+	// Horizontal: flip ke kiri bila lewat tepi kanan.
+	if (x + rect.width + MENU_PADDING > vw) x = x - rect.width;
+	x = Math.min(Math.max(MENU_PADDING, x), Math.max(MENU_PADDING, vw - rect.width - MENU_PADDING));
+
+	// Vertical: bila sisa ruang di bawah < tinggi menu → buka ke atas.
+	const spaceBelow = vh - y;
+	if (spaceBelow < rect.height + MENU_PADDING) {
+		const flipped = y - rect.height;
+		y = flipped >= MENU_PADDING ? flipped : Math.max(MENU_PADDING, vh - rect.height - MENU_PADDING);
+	}
+	y = Math.min(Math.max(MENU_PADDING, y), Math.max(MENU_PADDING, vh - rect.height - MENU_PADDING));
+
+	posX.value = x;
+	posY.value = y;
+	positioned.value = true;
+}
+
+watch(
+	() => [props.contextMenu.visible, props.contextMenu.x, props.contextMenu.y],
+	([visible]) => {
+		if (visible) reposition();
+		else positioned.value = false;
+	},
+);
 
 const showOpen = computed(() => props.canOpenFolder && props.selectedCount === 1 && Boolean(props.primarySelectedFile?.is_folder));
 const showPreview = computed(() => props.selectedCount === 1 && !props.primarySelectedFile?.is_folder);
@@ -58,7 +102,7 @@ function handleDelete() {
 </script>
 
 <template>
-	<div v-if="contextMenu.visible" ref="contextMenuRef" class="fixed z-50 min-w-[220px] overflow-hidden rounded-2xl border border-[#e0e3e7] bg-white py-2 shadow-[0_16px_40px_rgba(32,33,36,0.2)] dark:border-slate-700 dark:bg-slate-800 dark:shadow-[0_16px_40px_rgba(15,23,42,0.45)]" :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.stop>
+	<div v-if="contextMenu.visible" ref="menuEl" class="fixed z-50 min-w-[220px] overflow-hidden rounded-2xl border border-[#e0e3e7] bg-white py-2 shadow-[0_16px_40px_rgba(32,33,36,0.2)] transition-opacity duration-100 dark:border-slate-700 dark:bg-slate-800 dark:shadow-[0_16px_40px_rgba(15,23,42,0.45)]" :class="positioned ? 'opacity-100' : 'opacity-0 pointer-events-none'" :style="{ left: `${posX}px`, top: `${posY}px` }" @click.stop @contextmenu.stop>
 		<button v-if="showOpen" type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#202124] hover:bg-[#f8fafd] dark:text-slate-100 dark:hover:bg-slate-700/70" @click="handleOpen">
 			<IconFolder :size="17" :stroke="2" />
 			<span>{{ t('common.open') }}</span>

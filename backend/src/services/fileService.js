@@ -23,7 +23,9 @@ function buildDisplayNames(rows) {
 	}));
 }
 
-export function listFilesByPath(userId, virtualPath = '/') {
+// cloudAccountId opsional: bila diberi → scope ke satu akun + TANPA dedup
+// (dipakai FolderPickerModal; tampilan gabungan default tetap dedup folder by name).
+export function listFilesByPath(userId, virtualPath = '/', cloudAccountId = null) {
 	const normalized = normalizePath(virtualPath);
 	const rows = db
 		.prepare(`
@@ -34,13 +36,18 @@ export function listFilesByPath(userId, virtualPath = '/') {
       WHERE fm.user_id = ?
         AND fm.virtual_path = ?
         AND ca.status = 'active'
+        AND (? IS NULL OR fm.cloud_account_id = ?)
       ORDER BY fm.is_folder DESC, fm.file_name COLLATE NOCASE ASC
     `)
-		.all(userId, normalized);
+		.all(userId, normalized, cloudAccountId, cloudAccountId);
 
 	const built = buildDisplayNames(rows);
 
-	// Deduplikasi folder dengan nama sama — tampilkan hanya satu
+	// Scope per-akun → tak ada bentrok nama lintas akun, jangan dedup
+	// (dedup malah buang subfolder akun terpilih yang namanya sama dengan akun lain).
+	if (cloudAccountId) return built;
+
+	// Tampilan gabungan: deduplikasi folder dengan nama sama — tampilkan hanya satu
 	const seenFolders = new Set();
 	const deduped = built.filter((item) => {
 		if (!item.is_folder) return true; // file selalu tampil

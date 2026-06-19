@@ -177,7 +177,7 @@ router.get('/files', async (req, res, next) => {
 					? listRecentFiles(req.user.id)
 					: req.query.shared === '1'
 						? await listSharedWithMeFiles(req.user.id)
-						: listFilesByPath(req.user.id, req.query.path || '/');
+						: listFilesByPath(req.user.id, req.query.path || '/', req.query.cloud_account_id || null);
 		res.json({ data: files });
 	} catch (error) {
 		next(error);

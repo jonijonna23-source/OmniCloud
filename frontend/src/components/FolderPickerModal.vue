@@ -57,12 +57,11 @@ async function loadFolders(path) {
 	isLoading.value = true;
 	error.value = '';
 	try {
-		const { data } = await api.listFiles(path);
-		// Saring ke folder milik akun terpilih saja (listFiles mengembalikan gabungan).
-		folders.value = (data || []).filter(
-			(file) => file.is_folder && file.cloud_account_id === selectedAccount.value.id,
-		);
+		// Scoped per-akun (backend skip dedup) → subfolder akun terpilih utuh.
+		const { data } = await api.listFiles(path, selectedAccount.value.id);
+		folders.value = (data || []).filter((file) => file.is_folder);
 		currentPath.value = path;
+		console.log('[FolderPicker] loadFolders', { path, account: selectedAccount.value.id, folders: folders.value.length });
 	} catch (err) {
 		error.value = err.message || 'Gagal memuat folder';
 	} finally {
