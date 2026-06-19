@@ -128,14 +128,17 @@ watch(
 function handleConfirm() {
 	if (!selectedAccount.value) {
 		error.value = 'Pilih akun tujuan';
+		console.warn('[FolderPicker] handleConfirm dibatalkan: belum pilih akun');
 		return;
 	}
 
-	emit('select', {
+	const dest = {
 		cloud_account_id: selectedAccount.value.id,
 		virtual_path: currentPath.value,
 		remote_parent_id: currentRemoteParentId.value,
-	});
+	};
+	console.log('[FolderPicker] handleConfirm → emit select', dest);
+	emit('select', dest);
 }
 </script>
 

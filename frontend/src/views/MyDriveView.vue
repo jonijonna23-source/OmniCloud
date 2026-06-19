@@ -237,15 +237,19 @@ async function handleUploads(entries) {
 
 async function handleFolderSelected(dest) {
 	const targets = getActionFiles();
-	if (!targets.length) return;
-	
+	console.log('[Move] handleFolderSelected', { dest, mode: folderPickerMode.value, targets: targets.length });
+	if (!targets.length) {
+		console.warn('[Move] dibatalkan: tak ada file terpilih (getActionFiles kosong)');
+		return;
+	}
+
 	try {
 		await fileActions.moveOrCopyFiles(targets, dest, folderPickerMode.value);
 		closeFolderPicker();
 		clearSelection();
 		await refreshCurrentFolder();
-	} catch {
-		// Error is handled globally or shown in UI
+	} catch (err) {
+		console.error('[Move] moveOrCopyFiles gagal', err);
 	}
 }
 

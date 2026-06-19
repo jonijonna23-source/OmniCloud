@@ -274,5 +274,6 @@ export function useFileActions({
 		openMoveModal,
 		openCopyModal,
 		closeFolderPicker,
+		getActionFiles,
 	};
 }
