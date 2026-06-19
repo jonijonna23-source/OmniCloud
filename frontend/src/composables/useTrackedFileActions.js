@@ -49,5 +49,37 @@ export function useTrackedFileActions({ uploadQueueStore, api }) {
 		);
 	}
 
-	return { rename, delete: deleteFiles };
+	function moveOrCopyFiles(files, dest, mode = 'move') {
+		const targetKind = resolveTargetKind(files);
+		const type = mode === 'move' ? 'move' : 'copy';
+		const name = files.length === 1 ? files[0].file_name : `${files.length} ${targetKind}`;
+
+		return uploadQueueStore.trackServerOperation(
+			{
+				type,
+				name,
+				targetKind,
+			},
+			async () => {
+				const { data } = await api.moveFiles({
+					file_ids: files.map((file) => file.id),
+					dest,
+					mode,
+				});
+
+				if (data.transfers && data.transfers.length > 0) {
+					data.transfers.forEach((t) => {
+						const file = files.find((f) => f.id === t.file_id);
+						const tName = file ? (file.display_name || file.file_name) : `Transfer ${t.transfer_id}`;
+						const size = file ? file.size : 0;
+						uploadQueueStore.trackTransfer(t.transfer_id, tName, size, 'transfer');
+					});
+				}
+				
+				return data;
+			}
+		);
+	}
+
+	return { rename, delete: deleteFiles, moveOrCopyFiles };
 }

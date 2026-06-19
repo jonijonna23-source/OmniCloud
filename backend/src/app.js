@@ -4,6 +4,7 @@ import authRoutes from './routes/authRoutes.js';
 import healthRoutes from './routes/healthRoutes.js';
 import accountRoutes from './routes/accountRoutes.js';
 import fileRoutes from './routes/fileRoutes.js';
+import transferRoutes from './routes/transferRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import allocationRoutes from './routes/allocationRoutes.js';
@@ -41,6 +42,7 @@ export function createApp() {
 	app.use('/api', authRoutes);
 	app.use('/api', accountRoutes);
 	app.use('/api', fileRoutes);
+	app.use('/api', transferRoutes);
 	app.use('/api', uploadRoutes);
 	app.use('/api', settingsRoutes);
 	app.use('/api', allocationRoutes);

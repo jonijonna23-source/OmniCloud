@@ -1,4 +1,4 @@
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { api } from '../services/api';
 import { useContextMenu } from './useContextMenu';
 import { useFileSelection } from './useFileSelection';
@@ -91,6 +91,31 @@ export function useFileActions({
 	const canPreviewSelection = computed(
 		() => selectedCount.value === 1 && canPreview(primarySelectedFile.value),
 	);
+	const canMoveSelection = computed(() => selectedCount.value > 0);
+	const canCopySelection = computed(() => selectedCount.value > 0);
+
+	const isFolderPickerOpen = ref(false);
+	const folderPickerMode = ref('move');
+	const folderPickerTitle = computed(() => folderPickerMode.value === 'move' ? 'Pindah ke...' : 'Salin ke...');
+	const folderPickerActionLabel = computed(() => folderPickerMode.value === 'move' ? 'Pindah' : 'Salin');
+
+	function openMoveModal() {
+		if (!getActionFiles().length) return;
+		closeContextMenu();
+		folderPickerMode.value = 'move';
+		isFolderPickerOpen.value = true;
+	}
+
+	function openCopyModal() {
+		if (!getActionFiles().length) return;
+		closeContextMenu();
+		folderPickerMode.value = 'copy';
+		isFolderPickerOpen.value = true;
+	}
+
+	function closeFolderPicker() {
+		isFolderPickerOpen.value = false;
+	}
 
 	function getActionFiles(fallbackFile = contextMenu.value.file) {
 		return selectedFiles.value.length
@@ -240,5 +265,14 @@ export function useFileActions({
 		isPrimarySelectedStarred,
 		canOpenSelection,
 		canPreviewSelection,
+		canMoveSelection,
+		canCopySelection,
+		isFolderPickerOpen,
+		folderPickerMode,
+		folderPickerTitle,
+		folderPickerActionLabel,
+		openMoveModal,
+		openCopyModal,
+		closeFolderPicker,
 	};
 }

@@ -48,6 +48,15 @@ export class MegaAdapter extends BaseCloudAdapter {
 		this.storagePromise = null;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+			rename: true,
+			delete: true,
+			move: true,
+		};
+	}
+
 	readCredentials() {
 		const credentials = decryptJson(this.account.encrypted_credentials);
 		if (!credentials.session && (!credentials.email || !credentials.password)) {
@@ -256,6 +265,29 @@ export class MegaAdapter extends BaseCloudAdapter {
 		const file = await this.findByRecord(fileRecord);
 		await file.rename(nextName);
 		this.invalidateStorage();
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		const node = await this.findByRecord(fileRecord);
+		const target = await this.ensureRemotePath(destVirtualPath);
+
+		await node.moveTo(target);
+		if (newName && newName !== node.name) {
+			await node.rename(newName);
+		}
+
+		this.invalidateStorage();
+		return {
+			remoteFileId: node.nodeId || node.downloadId,
+			remoteParentId: target.nodeId || null,
+			fileName: newName || node.name || fileRecord.file_name,
+		};
+	}
+
+	async copyFile() {
+		// MEGA (megajs) tidak menyediakan API copy native. Ditunda ke engine Transfer
+		// (download + upload server-side, sumber == tujuan untuk copy dalam akun).
+		throw new Error('Copy is not supported for MEGA yet');
 	}
 
 	async deleteFile(fileRecord) {

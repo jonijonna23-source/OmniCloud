@@ -46,6 +46,15 @@ export class S3Adapter extends BaseCloudAdapter {
 		this.bucketCache = null;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+			rename: true,
+			delete: true,
+			move: true,
+		};
+	}
+
 	readCredentials() {
 		const credentials = decryptJson(this.account.encrypted_credentials);
 		if (!credentials.accessKeyId || !credentials.secretAccessKey || !credentials.bucket) {
@@ -254,6 +263,102 @@ export class S3Adapter extends BaseCloudAdapter {
 				Key: fromKey,
 			}),
 		);
+	}
+
+	async listObjectsByPrefix(prefix) {
+		const { client, bucket } = this.getClient();
+		const objects = [];
+		let continuationToken;
+
+		do {
+			const response = await client.send(
+				new ListObjectsV2Command({
+					Bucket: bucket,
+					Prefix: prefix,
+					ContinuationToken: continuationToken,
+				}),
+			);
+			objects.push(...(response.Contents || []));
+			continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+		} while (continuationToken);
+
+		return objects;
+	}
+
+	// Salin (dan opsional hapus) seluruh objek di bawah satu prefix folder.
+	async copyPrefix(oldPrefix, newPrefix, { deleteSource = false } = {}) {
+		const { client, bucket } = this.getClient();
+		const objects = await this.listObjectsByPrefix(oldPrefix);
+
+		for (const object of objects) {
+			if (!object.Key) continue;
+			const newKey = `${newPrefix}${object.Key.slice(oldPrefix.length)}`;
+			await client.send(
+				new CopyObjectCommand({
+					Bucket: bucket,
+					CopySource: `${bucket}/${object.Key}`,
+					Key: newKey,
+				}),
+			);
+			if (deleteSource) {
+				await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: object.Key }));
+			}
+		}
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		const { client, bucket } = this.getClient();
+
+		if (fileRecord.is_folder) {
+			const oldPrefix = fileRecord.remote_file_id || `${toKey(fileRecord.virtual_path, fileRecord.file_name)}/`;
+			const newPrefix = `${toKey(destVirtualPath, newName || fileRecord.file_name)}/`;
+			await this.copyPrefix(oldPrefix, newPrefix, { deleteSource: true });
+			return {
+				remoteFileId: newPrefix,
+				remoteParentId: normalizeVirtualPath(destVirtualPath),
+				fileName: newName || fileRecord.file_name,
+			};
+		}
+
+		const fromKey = fileRecord.remote_file_id || toKey(fileRecord.virtual_path, fileRecord.file_name);
+		const newKey = toKey(destVirtualPath, newName || fileRecord.file_name);
+		await client.send(
+			new CopyObjectCommand({ Bucket: bucket, CopySource: `${bucket}/${fromKey}`, Key: newKey }),
+		);
+		await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: fromKey }));
+
+		return {
+			remoteFileId: newKey,
+			remoteParentId: normalizeVirtualPath(destVirtualPath),
+			fileName: newName || fileRecord.file_name,
+		};
+	}
+
+	async copyFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		const { client, bucket } = this.getClient();
+
+		if (fileRecord.is_folder) {
+			const oldPrefix = fileRecord.remote_file_id || `${toKey(fileRecord.virtual_path, fileRecord.file_name)}/`;
+			const newPrefix = `${toKey(destVirtualPath, newName || fileRecord.file_name)}/`;
+			await this.copyPrefix(oldPrefix, newPrefix, { deleteSource: false });
+			return {
+				remoteFileId: newPrefix,
+				remoteParentId: normalizeVirtualPath(destVirtualPath),
+				fileName: newName || fileRecord.file_name,
+			};
+		}
+
+		const fromKey = fileRecord.remote_file_id || toKey(fileRecord.virtual_path, fileRecord.file_name);
+		const newKey = toKey(destVirtualPath, newName || fileRecord.file_name);
+		await client.send(
+			new CopyObjectCommand({ Bucket: bucket, CopySource: `${bucket}/${fromKey}`, Key: newKey }),
+		);
+
+		return {
+			remoteFileId: newKey,
+			remoteParentId: normalizeVirtualPath(destVirtualPath),
+			fileName: newName || fileRecord.file_name,
+		};
 	}
 
 	async deleteFile(fileRecord) {

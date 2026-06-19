@@ -31,6 +31,15 @@ export class PCloudAdapter extends BaseCloudAdapter {
 		this.session = null;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+			rename: true,
+			delete: true,
+			move: true,
+		};
+	}
+
 	readCredentials() {
 		const credentials = decryptJson(this.account.encrypted_credentials);
 		if (!credentials.auth && (!credentials.username || !credentials.password)) {
@@ -244,6 +253,64 @@ export class PCloudAdapter extends BaseCloudAdapter {
 		const params = this.idParams(fileRecord);
 		const method = fileRecord.is_folder ? 'renamefolder' : 'renamefile';
 		await this.call(method, { ...params, toname: nextName });
+	}
+
+	// tofolderid tujuan: pakai id folder (`d<id>`) bila tersedia, selain itu pastikan
+	// folder ada via path (ensureFolder mengembalikan folderid; 0 = root).
+	async resolveFolderId(destVirtualPath = '/', destRemoteParentId) {
+		if (destRemoteParentId && String(destRemoteParentId).startsWith('d')) {
+			return Number(String(destRemoteParentId).slice(1));
+		}
+		return this.ensureFolder(destVirtualPath);
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', destRemoteParentId, newName } = {}) {
+		const tofolderid = await this.resolveFolderId(destVirtualPath, destRemoteParentId);
+		const params = this.idParams(fileRecord);
+		const method = fileRecord.is_folder ? 'renamefolder' : 'renamefile';
+		const payload = await this.call(method, {
+			...params,
+			tofolderid,
+			toname: newName || fileRecord.file_name,
+		});
+
+		const meta = payload.metadata || {};
+		const remoteFileId = fileRecord.is_folder
+			? (meta.folderid != null ? `d${meta.folderid}` : fileRecord.remote_file_id)
+			: (meta.fileid != null ? `f${meta.fileid}` : fileRecord.remote_file_id);
+
+		return {
+			remoteFileId,
+			remoteParentId: normalizeVirtualPath(destVirtualPath),
+			fileName: meta.name || newName || fileRecord.file_name,
+		};
+	}
+
+	async copyFile(fileRecord, { destVirtualPath = '/', destRemoteParentId, newName } = {}) {
+		const tofolderid = await this.resolveFolderId(destVirtualPath, destRemoteParentId);
+		const params = this.idParams(fileRecord);
+
+		if (fileRecord.is_folder) {
+			const payload = await this.call('copyfolder', { ...params, tofolderid });
+			const meta = payload.metadata || {};
+			return {
+				remoteFileId: meta.folderid != null ? `d${meta.folderid}` : null,
+				remoteParentId: normalizeVirtualPath(destVirtualPath),
+				fileName: meta.name || fileRecord.file_name,
+			};
+		}
+
+		const payload = await this.call('copyfile', {
+			...params,
+			tofolderid,
+			toname: newName || fileRecord.file_name,
+		});
+		const meta = payload.metadata || {};
+		return {
+			remoteFileId: meta.fileid != null ? `f${meta.fileid}` : null,
+			remoteParentId: normalizeVirtualPath(destVirtualPath),
+			fileName: meta.name || newName || fileRecord.file_name,
+		};
 	}
 
 	async deleteFile(fileRecord) {

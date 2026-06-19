@@ -30,6 +30,15 @@ export class YandexAdapter extends BaseCloudAdapter {
 		this.tokenCache = null;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+			rename: true,
+			delete: true,
+			move: true,
+		};
+	}
+
 	readCredentials() {
 		const credentials = decryptJson(this.account.encrypted_credentials);
 		if (!credentials.accessToken && !credentials.refreshToken) {
@@ -275,6 +284,45 @@ export class YandexAdapter extends BaseCloudAdapter {
 			method: 'POST',
 			query: { from, path: to, overwrite: 'false' },
 		});
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		await this.ensureFolder(destVirtualPath);
+		const from = this.resolvePath(fileRecord);
+		const normalized = normalizeVirtualPath(destVirtualPath);
+		const base = normalized === '/' ? '' : normalized.replace(/\/+$/, '');
+		const to = `${base}/${newName || fileRecord.file_name}`;
+
+		// 201 = selesai, 202 = async (operasi besar) — keduanya dianggap sukses.
+		await this.request('/resources/move', {
+			method: 'POST',
+			query: { from, path: to, overwrite: 'false' },
+		});
+
+		return {
+			remoteFileId: to,
+			remoteParentId: normalized,
+			fileName: newName || fileRecord.file_name,
+		};
+	}
+
+	async copyFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		await this.ensureFolder(destVirtualPath);
+		const from = this.resolvePath(fileRecord);
+		const normalized = normalizeVirtualPath(destVirtualPath);
+		const base = normalized === '/' ? '' : normalized.replace(/\/+$/, '');
+		const to = `${base}/${newName || fileRecord.file_name}`;
+
+		await this.request('/resources/copy', {
+			method: 'POST',
+			query: { from, path: to, overwrite: 'false' },
+		});
+
+		return {
+			remoteFileId: to,
+			remoteParentId: normalized,
+			fileName: newName || fileRecord.file_name,
+		};
 	}
 
 	async deleteFile(fileRecord) {

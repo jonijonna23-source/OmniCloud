@@ -11,6 +11,7 @@ export class BaseCloudAdapter {
 			starred: false,
 			rename: true,
 			delete: true,
+			move: false,
 		};
 	}
 
@@ -71,6 +72,18 @@ export class BaseCloudAdapter {
 
 	async renameFile() {
 		throw new Error(`Rename is not supported for provider ${this.account.provider}`);
+	}
+
+	// Relokasi file/folder ke folder lain DI DALAM akun yang sama.
+	// Mengembalikan { remoteFileId, remoteParentId, fileName }.
+	async moveFile() {
+		throw new Error(`Move is not supported for provider ${this.account.provider}`);
+	}
+
+	// Salin file/folder ke folder lain di dalam akun yang sama (sumber dipertahankan).
+	// Mengembalikan { remoteFileId, remoteParentId, fileName }.
+	async copyFile() {
+		throw new Error(`Copy is not supported for provider ${this.account.provider}`);
 	}
 
 	async deleteFile() {

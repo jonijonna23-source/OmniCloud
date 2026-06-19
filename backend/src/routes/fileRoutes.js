@@ -4,6 +4,7 @@ import { getAccountById, getActiveAccounts } from '../services/accountService.js
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
 import { syncAccount } from '../services/syncService.js';
+import { moveFiles, MoveError } from '../services/fileMoveService.js';
 import { requireAppUser } from '../middleware/authMiddleware.js';
 
 const router = Router();
@@ -257,6 +258,39 @@ router.post('/files/bulk/delete', async (req, res, next) => {
 		return res.json({ data: { success: true, count: contexts.length } });
 	} catch (error) {
 		next(error);
+	}
+});
+
+router.post('/files/move', async (req, res, next) => {
+	try {
+		const fileIds = Array.isArray(req.body?.file_ids)
+			? [...new Set(req.body.file_ids.filter(Boolean))]
+			: [];
+		const dest = req.body?.dest;
+		const mode = req.body?.mode === 'copy' ? 'copy' : 'move';
+
+		if (!fileIds.length) {
+			return res.status(400).json({ error: 'At least one file id is required' });
+		}
+		if (!dest || typeof dest !== 'object') {
+			return res.status(400).json({ error: 'A destination is required' });
+		}
+
+		const result = await moveFiles(req.user.id, { fileIds, dest, mode });
+
+		// Cross-account file → otomatis jadi transfer (M3). Folder lintas akun belum didukung (M4).
+		return res.json({
+			data: {
+				moved: result.moved,
+				transfers: result.transfers,
+				unsupported: result.crossAccount,
+			},
+		});
+	} catch (error) {
+		if (error instanceof MoveError) {
+			return res.status(error.status).json({ error: error.message });
+		}
+		return next(error);
 	}
 });
 

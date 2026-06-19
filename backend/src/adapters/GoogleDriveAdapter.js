@@ -20,6 +20,7 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 			starred: true,
 			rename: true,
 			delete: true,
+			move: true,
 		};
 	}
 
@@ -324,6 +325,51 @@ export class GoogleDriveAdapter extends BaseCloudAdapter {
 			},
 			fields: 'id, name',
 		});
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', destRemoteParentId, newName } = {}) {
+		const drive = await this.getDriveClient();
+		const targetParentId = destRemoteParentId || await this.ensureRemotePath(destVirtualPath);
+		const previousParentId = fileRecord.remote_parent_id || 'root';
+
+		const response = await drive.files.update({
+			fileId: fileRecord.remote_file_id,
+			addParents: targetParentId,
+			removeParents: previousParentId,
+			requestBody: newName ? { name: newName } : {},
+			fields: 'id, parents, name',
+		});
+
+		return {
+			remoteFileId: response.data.id,
+			remoteParentId: response.data.parents?.[0] || targetParentId || null,
+			fileName: response.data.name || newName || fileRecord.file_name,
+		};
+	}
+
+	async copyFile(fileRecord, { destVirtualPath = '/', destRemoteParentId, newName } = {}) {
+		if (fileRecord.is_folder) {
+			// Google Drive tidak menyediakan copy folder rekursif secara native.
+			throw new Error('Copying folders is not supported for Google Drive yet');
+		}
+
+		const drive = await this.getDriveClient();
+		const targetParentId = destRemoteParentId || await this.ensureRemotePath(destVirtualPath);
+
+		const response = await drive.files.copy({
+			fileId: fileRecord.remote_file_id,
+			requestBody: {
+				name: newName || fileRecord.file_name,
+				parents: targetParentId ? [targetParentId] : undefined,
+			},
+			fields: 'id, parents, name',
+		});
+
+		return {
+			remoteFileId: response.data.id,
+			remoteParentId: response.data.parents?.[0] || targetParentId || null,
+			fileName: response.data.name || newName || fileRecord.file_name,
+		};
 	}
 
 	async deleteFile(fileRecord) {

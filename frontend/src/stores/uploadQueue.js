@@ -37,7 +37,8 @@ function isAbortError(error) {
 }
 
 function isCancellable(operation) {
-	return ['upload', 'download'].includes(operation?.type) && ['pending', 'uploading', 'downloading'].includes(operation?.status);
+	return ['upload', 'download', 'transfer'].includes(operation?.type)
+		&& ['pending', 'uploading', 'downloading', 'processing', 'transferring'].includes(operation?.status);
 }
 
 function createBatchId() {
@@ -107,6 +108,9 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 				const hasCancellable = batchOperations.some((item) => isCancellable(item));
 				if (hasCancellable) {
 					for (const item of batchOperations) {
+						if (item.type === 'transfer' && item.transferId) {
+							api.cancelTransfer(item.transferId).catch(() => {});
+						}
 						item.abortController?.abort?.();
 						item.socket?.close?.();
 						this.updateUpload(item.id, {
@@ -125,6 +129,9 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 			}
 
 			if (isCancellable(operation)) {
+				if (operation.type === 'transfer' && operation.transferId) {
+					api.cancelTransfer(operation.transferId).catch(() => {});
+				}
 				operation.abortController?.abort?.();
 				operation.socket?.close?.();
 				this.updateUpload(id, {
@@ -165,6 +172,55 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 				});
 				throw error;
 			}
+		},
+		trackTransfer(transferId, name, size = 0, type = 'transfer') {
+			const queueItem = this.registerOperation({
+				type,
+				name,
+				size,
+				status: 'uploading',
+				progress: 0,
+				transferId,
+			});
+
+			const socket = api.createUploadSocket(transferId);
+			this.updateUpload(queueItem.id, { socket });
+
+			socket.onmessage = (event) => {
+				const message = JSON.parse(event.data);
+				if (message.type === 'transfer:progress' || message.type === 'upload:progress') {
+					this.updateUpload(queueItem.id, {
+						progress_percentage: message.percent,
+						status: message.status || 'uploading',
+					});
+				}
+
+				if (message.type === 'transfer:complete' || message.type === 'upload:complete') {
+					this.updateUpload(queueItem.id, {
+						progress_percentage: 100,
+						status: 'completed',
+					});
+					socket.close();
+				}
+
+				if (message.type === 'transfer:error' || message.type === 'upload:error') {
+					this.updateUpload(queueItem.id, {
+						status: 'failed',
+						error: message.message,
+					});
+					socket.close();
+				}
+			};
+
+			socket.onerror = () => {
+				this.updateUpload(queueItem.id, {
+					status: 'failed',
+					error: 'WebSocket connection failed',
+				});
+				socket.close();
+			};
+
+			return queueItem;
 		},
 		async downloadFile(file) {
 			return this.downloadFiles(file ? [file] : []);

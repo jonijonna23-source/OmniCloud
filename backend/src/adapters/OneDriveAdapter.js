@@ -23,6 +23,7 @@ export class OneDriveAdapter extends BaseCloudAdapter {
 			starred: false,
 			rename: true,
 			delete: true,
+			move: true,
 		};
 	}
 
@@ -371,6 +372,34 @@ export class OneDriveAdapter extends BaseCloudAdapter {
 				name: nextName,
 			}),
 		});
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', destRemoteParentId, newName } = {}) {
+		const parentId = destRemoteParentId || await this.ensureRemotePath(destVirtualPath);
+		const body = { parentReference: { id: parentId } };
+		if (newName) {
+			body.name = newName;
+		}
+
+		const payload = await this.graph(`/me/drive/items/${encodeURIComponent(fileRecord.remote_file_id)}`, {
+			method: 'PATCH',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(body),
+		});
+
+		return {
+			remoteFileId: payload.id || fileRecord.remote_file_id,
+			remoteParentId: payload.parentReference?.id || parentId,
+			fileName: payload.name || newName || fileRecord.file_name,
+		};
+	}
+
+	async copyFile() {
+		// OneDrive copy adalah operasi async (202 + polling monitor URL).
+		// Ditunda: copy lintas/dalam akun akan ditangani engine Transfer.
+		throw new Error('Copy is not supported for OneDrive yet');
 	}
 
 	async deleteFile(fileRecord) {

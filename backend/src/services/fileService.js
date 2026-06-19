@@ -17,6 +17,8 @@ function buildDisplayNames(rows) {
 			starred: row.provider === 'google_drive',
 			rename: true,
 			delete: true,
+			// Semua provider lokal kini mendukung move (relokasi dalam akun yang sama).
+			move: true,
 		},
 	}));
 }
@@ -273,6 +275,83 @@ export function listDirectoryTree(userId) {
       ORDER BY virtual_path, is_folder DESC, file_name
     `)
 		.all(userId);
+}
+
+// Update optimistic baris top-level setelah move akun-sama.
+// remote_file_id memakai COALESCE: hanya diganti bila adapter mengembalikan id baru.
+export function relocateFileMetadata(userId, fileId, { virtual_path, remote_parent_id, remote_file_id } = {}) {
+	return db.prepare(`
+		UPDATE file_metadata
+		SET virtual_path = @virtual_path,
+			remote_parent_id = @remote_parent_id,
+			remote_file_id = COALESCE(@remote_file_id, remote_file_id),
+			updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = @user_id AND id = @id
+	`).run({
+		user_id: userId,
+		id: fileId,
+		virtual_path: normalizePath(virtual_path),
+		remote_parent_id: remote_parent_id ?? null,
+		remote_file_id: remote_file_id ?? null,
+	});
+}
+
+// Hapus satu baris metadata (dipakai engine Transfer setelah dest sukses pada mode move).
+export function deleteFileMetadataById(userId, fileId) {
+	return db
+		.prepare('DELETE FROM file_metadata WHERE user_id = ? AND id = ?')
+		.run(userId, fileId);
+}
+
+// Semua descendant (file + folder) di bawah `contentsVirtualPath` pada satu akun.
+// Urut path length ASC → folder parent selalu sebelum anaknya (dipakai engine
+// Transfer folder rekursif untuk membangun struktur dest top-down).
+export function listSubtree(userId, cloudAccountId, contentsVirtualPath) {
+	const prefix = normalizePath(contentsVirtualPath);
+	const likePrefix = `${prefix.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+
+	const rows = db
+		.prepare(`
+      SELECT fm.*, ca.provider, ca.email
+      FROM file_metadata fm
+      INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+      WHERE fm.user_id = ? AND fm.cloud_account_id = ? AND ca.status = 'active'
+        AND fm.virtual_path LIKE ? ESCAPE '\\'
+      ORDER BY LENGTH(fm.virtual_path) ASC, fm.file_name ASC
+    `)
+		.all(userId, cloudAccountId, likePrefix);
+
+	return buildDisplayNames(rows);
+}
+
+// Cari baris folder yang ISI-nya berada di `contentsVirtualPath` (mis. "/Documents/")
+// pada akun tertentu. Baris folder itu sendiri ada di parent path dengan file_name = nama folder.
+// Mengembalikan null untuk root ("/") karena root bukan baris folder.
+export function findFolderRowByPath(userId, cloudAccountId, contentsVirtualPath) {
+	const normalized = normalizePath(contentsVirtualPath);
+	if (normalized === '/') return null;
+
+	const trimmed = normalized.replace(/\/+$/g, '');
+	const lastSlash = trimmed.lastIndexOf('/');
+	const name = trimmed.slice(lastSlash + 1);
+	const parent = normalizePath(trimmed.slice(0, lastSlash + 1) || '/');
+
+	const row = db
+		.prepare(`
+			SELECT fm.*, ca.provider, ca.email
+			FROM file_metadata fm
+			INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+			WHERE fm.user_id = ?
+				AND fm.cloud_account_id = ?
+				AND fm.is_folder = 1
+				AND fm.file_name = ? COLLATE NOCASE
+				AND fm.virtual_path = ?
+				AND ca.status = 'active'
+		`)
+		.get(userId, cloudAccountId, name, parent);
+
+	if (!row) return null;
+	return buildDisplayNames([row])[0];
 }
 
 export function findFoldersByNameAndPath(userId, fileName, virtualPath) {

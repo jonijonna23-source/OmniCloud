@@ -110,6 +110,26 @@ export const api = {
 			body: JSON.stringify({ ids: fileIds }),
 		});
 	},
+	moveFiles(payload) {
+		return request('/files/move', {
+			method: 'POST',
+			body: JSON.stringify(payload),
+		});
+	},
+	initiateTransfer(payload) {
+		return request('/transfers/initiate', {
+			method: 'POST',
+			body: JSON.stringify(payload),
+		});
+	},
+	getTransferStatus(transferId) {
+		return request(`/transfers/${transferId}`);
+	},
+	cancelTransfer(transferId) {
+		return request(`/transfers/${transferId}/cancel`, {
+			method: 'POST',
+		});
+	},
 	getGoogleIntegrationStatus() {
 		return request('/accounts/google/status');
 	},

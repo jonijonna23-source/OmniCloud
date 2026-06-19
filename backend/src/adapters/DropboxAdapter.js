@@ -47,6 +47,15 @@ export class DropboxAdapter extends BaseCloudAdapter {
 		this.accessTokenCache = null;
 	}
 
+	getCapabilities() {
+		return {
+			starred: false,
+			rename: true,
+			delete: true,
+			move: true,
+		};
+	}
+
 	readCredentials() {
 		const credentials = decryptJson(this.account.encrypted_credentials);
 		if (!credentials.refreshToken || !credentials.clientId || !credentials.clientSecret) {
@@ -311,6 +320,42 @@ export class DropboxAdapter extends BaseCloudAdapter {
 			autorename: false,
 			allow_shared_folder: true,
 		});
+	}
+
+	async moveFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		const parentPath = await this.ensureRemotePath(destVirtualPath);
+		const toPath = joinDropboxPath(parentPath || '/', newName || fileRecord.file_name);
+		const payload = await this.rpc('/files/move_v2', {
+			from_path: fileRecord.remote_file_id || joinDropboxPath(fileRecord.virtual_path, fileRecord.file_name),
+			to_path: toPath,
+			autorename: false,
+			allow_shared_folder: true,
+		});
+
+		const meta = payload.metadata || {};
+		return {
+			remoteFileId: meta.id || meta.path_lower || fileRecord.remote_file_id,
+			remoteParentId: parentPath || '/',
+			fileName: meta.name || newName || fileRecord.file_name,
+		};
+	}
+
+	async copyFile(fileRecord, { destVirtualPath = '/', newName } = {}) {
+		const parentPath = await this.ensureRemotePath(destVirtualPath);
+		const toPath = joinDropboxPath(parentPath || '/', newName || fileRecord.file_name);
+		const payload = await this.rpc('/files/copy_v2', {
+			from_path: fileRecord.remote_file_id || joinDropboxPath(fileRecord.virtual_path, fileRecord.file_name),
+			to_path: toPath,
+			autorename: false,
+			allow_shared_folder: true,
+		});
+
+		const meta = payload.metadata || {};
+		return {
+			remoteFileId: meta.id || meta.path_lower || null,
+			remoteParentId: parentPath || '/',
+			fileName: meta.name || newName || fileRecord.file_name,
+		};
 	}
 
 	async deleteFile(fileRecord) {

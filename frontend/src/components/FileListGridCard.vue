@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconStarFilled } from '@tabler/icons-vue';
 import TruncateMarquee from './TruncateMarquee.vue';
@@ -16,7 +16,7 @@ const props = defineProps({
 	highlighted: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['select', 'open', 'contextmenu']);
+const emit = defineEmits(['select', 'open', 'contextmenu', 'dragstart', 'drop']);
 
 const displayName = computed(() => {
 	if (props.nameField === 'display_name') {
@@ -36,10 +36,42 @@ function handleDblClick(event) {
 function handleContextMenu(event) {
 	emit('contextmenu', event);
 }
+
+const isDropHover = ref(false);
+
+function handleDragStart(event) {
+	emit('dragstart', event, props.item);
+}
+
+function handleDragEnter(event) {
+	if (!props.item.is_folder) return;
+	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
+	isDropHover.value = true;
+}
+
+function handleDragOver(event) {
+	if (!props.item.is_folder) return;
+	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
+	event.dataTransfer.dropEffect = event.altKey || event.ctrlKey || event.metaKey ? 'copy' : 'move';
+}
+
+function handleDragLeave() {
+	isDropHover.value = false;
+}
+
+function handleDrop(event) {
+	if (!props.item.is_folder) return;
+	isDropHover.value = false;
+	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
+	emit('drop', event, props.item);
+}
 </script>
 
 <template>
-	<div class="group select-none rounded-[22px] border p-4 transition hover:-translate-y-0.5 hover:border-[#d2e3fc] hover:shadow-[0_10px_30px_rgba(32,33,36,0.08)] dark:hover:border-slate-500" :class="selected ? 'border-[#1a73e8] bg-gradient-to-br from-[#e8f0fe] to-[#f8fbff] shadow-[0_14px_34px_rgba(26,115,232,0.14)] dark:border-sky-400 dark:from-sky-500/15 dark:to-slate-800' : highlighted ? 'border-amber-400 bg-gradient-to-br from-amber-50 to-[#fffdf5] shadow-[0_14px_34px_rgba(245,158,11,0.14)] dark:border-amber-300 dark:from-amber-400/15 dark:to-slate-800' : 'border-[#e0e3e7] bg-white dark:border-slate-700 dark:bg-slate-800'" :data-file-id="item.id" @click="handleClick" @dblclick="handleDblClick" @contextmenu="handleContextMenu">
+	<div class="group select-none rounded-[22px] border p-4 transition hover:-translate-y-0.5 hover:border-[#d2e3fc] hover:shadow-[0_10px_30px_rgba(32,33,36,0.08)] dark:hover:border-slate-500" :class="[
+		isDropHover ? 'ring-2 ring-[#1a73e8] bg-blue-50/50 dark:ring-sky-400 dark:bg-sky-900/20' : '',
+		selected ? 'border-[#1a73e8] bg-gradient-to-br from-[#e8f0fe] to-[#f8fbff] shadow-[0_14px_34px_rgba(26,115,232,0.14)] dark:border-sky-400 dark:from-sky-500/15 dark:to-slate-800' : highlighted ? 'border-amber-400 bg-gradient-to-br from-amber-50 to-[#fffdf5] shadow-[0_14px_34px_rgba(245,158,11,0.14)] dark:border-amber-300 dark:from-amber-400/15 dark:to-slate-800' : 'border-[#e0e3e7] bg-white dark:border-slate-700 dark:bg-slate-800'
+	]" :data-file-id="item.id" draggable="true" @click="handleClick" @dblclick="handleDblClick" @contextmenu="handleContextMenu" @dragstart="handleDragStart" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave="handleDragLeave" @drop.prevent="handleDrop">
 		<button type="button" class="flex w-full flex-col items-start gap-4 text-left">
 			<div class="flex w-full items-start justify-between gap-3">
 				<div class="grid size-12 place-items-center rounded-2xl transition" :class="selected ? 'bg-[#d3e3fd] text-[#1a73e8] shadow-inner dark:bg-sky-500/20 dark:text-sky-300' : highlighted ? 'bg-amber-100 text-amber-500 shadow-inner dark:bg-amber-400/20 dark:text-amber-300' : 'bg-[#f1f3f4] text-[#5f6368] dark:bg-slate-700 dark:text-slate-300'">
