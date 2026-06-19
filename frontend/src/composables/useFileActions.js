@@ -96,25 +96,33 @@ export function useFileActions({
 
 	const isFolderPickerOpen = ref(false);
 	const folderPickerMode = ref('move');
+	// Snapshot file SAAT modal dibuka — seleksi bisa ke-clear (klik selection bar bubble
+	// ke @click=clearSelection), jadi jangan baca getActionFiles() lagi saat confirm.
+	const folderPickerFiles = ref([]);
 	const folderPickerTitle = computed(() => folderPickerMode.value === 'move' ? 'Pindah ke...' : 'Salin ke...');
 	const folderPickerActionLabel = computed(() => folderPickerMode.value === 'move' ? 'Pindah' : 'Salin');
 
 	function openMoveModal() {
-		if (!getActionFiles().length) return;
+		const files = [...getActionFiles()];
+		if (!files.length) return;
 		closeContextMenu();
+		folderPickerFiles.value = files;
 		folderPickerMode.value = 'move';
 		isFolderPickerOpen.value = true;
 	}
 
 	function openCopyModal() {
-		if (!getActionFiles().length) return;
+		const files = [...getActionFiles()];
+		if (!files.length) return;
 		closeContextMenu();
+		folderPickerFiles.value = files;
 		folderPickerMode.value = 'copy';
 		isFolderPickerOpen.value = true;
 	}
 
 	function closeFolderPicker() {
 		isFolderPickerOpen.value = false;
+		folderPickerFiles.value = [];
 	}
 
 	function getActionFiles(fallbackFile = contextMenu.value.file) {
@@ -269,6 +277,7 @@ export function useFileActions({
 		canCopySelection,
 		isFolderPickerOpen,
 		folderPickerMode,
+		folderPickerFiles,
 		folderPickerTitle,
 		folderPickerActionLabel,
 		openMoveModal,

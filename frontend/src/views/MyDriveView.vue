@@ -90,6 +90,7 @@ const {
 	canCopySelection,
 	isFolderPickerOpen,
 	folderPickerMode,
+	folderPickerFiles,
 	folderPickerTitle,
 	folderPickerActionLabel,
 	openMoveModal,
@@ -236,10 +237,11 @@ async function handleUploads(entries) {
 }
 
 async function handleFolderSelected(dest) {
-	const targets = getActionFiles();
+	// Pakai snapshot saat modal dibuka (seleksi bisa sudah ke-clear).
+	const targets = folderPickerFiles.value;
 	console.log('[Move] handleFolderSelected', { dest, mode: folderPickerMode.value, targets: targets.length });
 	if (!targets.length) {
-		console.warn('[Move] dibatalkan: tak ada file terpilih (getActionFiles kosong)');
+		console.warn('[Move] dibatalkan: snapshot file kosong');
 		return;
 	}
 
