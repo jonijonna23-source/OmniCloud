@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { IconStarFilled } from '@tabler/icons-vue';
 import TruncateMarquee from './TruncateMarquee.vue';
 import { formatBytes, formatDate, getModifiedTime, providerIcon, providerLabel } from '../composables/useFormatFile.js';
@@ -13,7 +13,7 @@ const props = defineProps({
 	highlighted: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['select', 'open', 'contextmenu', 'dragstart', 'drop']);
+const emit = defineEmits(['select', 'open', 'contextmenu']);
 
 const displayName = computed(() => {
 	if (props.nameField === 'display_name') {
@@ -33,42 +33,12 @@ function handleDblClick(event) {
 function handleContextMenu(event) {
 	emit('contextmenu', event);
 }
-
-const isDropHover = ref(false);
-
-function handleDragStart(event) {
-	emit('dragstart', event, props.item);
-}
-
-function handleDragEnter(event) {
-	if (!props.item.is_folder) return;
-	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
-	isDropHover.value = true;
-}
-
-function handleDragOver(event) {
-	if (!props.item.is_folder) return;
-	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
-	event.dataTransfer.dropEffect = event.altKey || event.ctrlKey || event.metaKey ? 'copy' : 'move';
-}
-
-function handleDragLeave() {
-	isDropHover.value = false;
-}
-
-function handleDrop(event) {
-	if (!props.item.is_folder) return;
-	isDropHover.value = false;
-	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
-	emit('drop', event, props.item);
-}
 </script>
 
 <template>
 	<div class="group grid min-h-[52px] cursor-default select-none grid-cols-[minmax(260px,2fr)_minmax(180px,1.1fr)_minmax(150px,1fr)_140px] items-center gap-3 border-t border-[#eceff1] px-[18px] transition first:border-t-0 dark:border-slate-700" :class="[
-		isDropHover ? 'ring-2 ring-inset ring-[#1a73e8] bg-blue-50/50 dark:ring-sky-400 dark:bg-sky-900/20' : '',
 		selected ? 'bg-gradient-to-r from-[#e8f0fe] to-[#f8fbff] shadow-[inset_4px_0_0_#1a73e8] dark:from-sky-500/15 dark:to-slate-800 dark:shadow-[inset_4px_0_0_#38bdf8]' : highlighted ? 'bg-gradient-to-r from-amber-50 to-[#fffdf5] shadow-[inset_4px_0_0_#f59e0b] dark:from-amber-400/15 dark:to-slate-800 dark:shadow-[inset_4px_0_0_#fbbf24]' : 'hover:bg-black/[0.02] dark:hover:bg-white/6'
-	]" :data-file-id="item.id" draggable="true" @click="handleClick" @dblclick="handleDblClick" @contextmenu="handleContextMenu" @dragstart="handleDragStart" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave="handleDragLeave" @drop.prevent="handleDrop">
+	]" :data-file-id="item.id" @click="handleClick" @dblclick="handleDblClick" @contextmenu="handleContextMenu">
 		<div class="flex min-w-0 items-center gap-2.5 text-[#202124] dark:text-slate-100">
 			<component :is="getFileIcon(item, selected || highlighted)" :size="18" :stroke="selected || highlighted ? 0 : 1.8" class="transition-transform duration-200 group-hover:scale-110" :class="selected ? 'text-[#1a73e8] drop-shadow-sm dark:text-sky-300' : highlighted ? 'text-amber-500 drop-shadow-sm dark:text-amber-300' : 'text-[#5f6368] dark:text-slate-400'" />
 			<TruncateMarquee :text="displayName" />

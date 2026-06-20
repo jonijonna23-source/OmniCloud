@@ -43,7 +43,6 @@ const lastObservedSyncAt = ref('');
 const highlightedFileId = ref(null);
 const highlightTimeout = ref(null);
 const selectedUploadAccount = ref('auto');
-const dropHoverPath = ref(null);
 
 const fileActions = useTrackedFileActions({ uploadQueueStore, api });
 
@@ -96,7 +95,6 @@ const {
 	openMoveModal,
 	openCopyModal,
 	closeFolderPicker,
-	getActionFiles,
 	canPreview,
 	previewFile,
 	isPreviewOpen,
@@ -255,89 +253,6 @@ async function handleFolderSelected(dest) {
 	}
 }
 
-function onItemDragStart(event, item) {
-	if (!isSelected(item)) {
-		replaceSelection(item);
-	}
-	const targets = getActionFiles();
-	event.dataTransfer.setData('omnicloud/items', JSON.stringify(targets));
-	event.dataTransfer.effectAllowed = 'copyMove';
-}
-
-async function onItemDrop(event, destFolder) {
-	// Hanya folder yang valid jadi drop target.
-	if (!destFolder?.is_folder) return;
-	event.stopPropagation();
-
-	const data = event.dataTransfer.getData('omnicloud/items');
-	if (!data) return;
-	const targets = JSON.parse(data);
-	if (!targets.length) return;
-
-	// Cegah drop folder ke dirinya sendiri.
-	if (targets.some((item) => item.id === destFolder.id)) return;
-
-	const mode = event.altKey || event.ctrlKey || event.metaKey ? 'copy' : 'move';
-	const destPath = (destFolder.virtual_path || (currentPath.value === '/' ? '/' : `${currentPath.value}/`)) + destFolder.file_name + '/';
-	const dest = {
-		virtual_path: destPath,
-		cloud_account_id: destFolder.cloud_account_id,
-		remote_parent_id: destFolder.remote_file_id,
-	};
-
-	try {
-		await fileActions.moveOrCopyFiles(targets, dest, mode);
-		clearSelection();
-		await refreshCurrentFolder();
-	} catch {}
-}
-
-function onBreadcrumbDragEnter(event, crumb) {
-	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
-	dropHoverPath.value = crumb.path;
-}
-
-function onBreadcrumbDragOver(event) {
-	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
-	event.dataTransfer.dropEffect = event.altKey || event.ctrlKey || event.metaKey ? 'copy' : 'move';
-}
-
-function onBreadcrumbDragLeave() {
-	dropHoverPath.value = null;
-}
-
-async function onBreadcrumbDrop(event, crumb) {
-	dropHoverPath.value = null;
-	if (!event.dataTransfer?.types?.includes('omnicloud/items')) return;
-	
-	const data = event.dataTransfer.getData('omnicloud/items');
-	if (!data) return;
-	const targets = JSON.parse(data);
-	if (!targets.length) return;
-	
-	const mode = event.altKey || event.ctrlKey || event.metaKey ? 'copy' : 'move';
-
-	// Breadcrumb path ambigu lintas akun → relokasi tiap item DALAM akun-nya sendiri.
-	// Group by source account agar tiap batch bawa cloud_account_id yang benar.
-	const groups = new Map();
-	for (const item of targets) {
-		if (!groups.has(item.cloud_account_id)) groups.set(item.cloud_account_id, []);
-		groups.get(item.cloud_account_id).push(item);
-	}
-
-	try {
-		for (const [accountId, items] of groups) {
-			await fileActions.moveOrCopyFiles(
-				items,
-				{ virtual_path: crumb.path, cloud_account_id: accountId },
-				mode,
-			);
-		}
-		clearSelection();
-		await refreshCurrentFolder();
-	} catch {}
-}
-
 function openFilePicker() {
 	resetFileInput(fileInputRef);
 	fileInputRef.value?.click();
@@ -399,8 +314,7 @@ function resetDragState() {
 	isDragActive.value = false;
 }
 
-function handleDragEnter(event) {
-	if (event.dataTransfer?.types?.includes('omnicloud/items')) return;
+function handleDragEnter() {
 	dragDepth.value += 1;
 	isDragActive.value = true;
 }
@@ -477,7 +391,7 @@ onBeforeUnmount(() => {
 			<div class="mb-2 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
 				<nav aria-label="Breadcrumb" class="m-0 flex flex-wrap items-center gap-1 text-2xl font-normal text-[#202124] dark:text-slate-100">
 					<template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
-						<button type="button" class="max-w-[220px] truncate rounded-md px-1.5 text-left transition hover:bg-black/[0.04] hover:text-[#1a73e8] dark:hover:bg-white/10 dark:hover:text-sky-300" :class="{ 'bg-blue-50/50 ring-2 ring-[#1a73e8] dark:bg-sky-900/20 dark:ring-sky-400': dropHoverPath === crumb.path }" @click="fileTreeStore.navigate(crumb.path)" @dragenter.prevent="e => onBreadcrumbDragEnter(e, crumb)" @dragover.prevent="onBreadcrumbDragOver" @dragleave="onBreadcrumbDragLeave" @drop.prevent="e => onBreadcrumbDrop(e, crumb)">{{ crumb.label === 'Root' ? 'Drive Saya' : crumb.label }}</button>
+						<button type="button" class="max-w-[220px] truncate rounded-md px-1.5 text-left transition hover:bg-black/[0.04] hover:text-[#1a73e8] dark:hover:bg-white/10 dark:hover:text-sky-300" @click="fileTreeStore.navigate(crumb.path)">{{ crumb.label === 'Root' ? 'Drive Saya' : crumb.label }}</button>
 						<IconChevronRight v-if="index < breadcrumbs.length - 1" :size="18" :stroke="2" class="mx-0.5 text-[#5f6368] dark:text-slate-400" />
 					</template>
 				</nav>
@@ -501,7 +415,7 @@ onBeforeUnmount(() => {
 						<div class="custom-scrollbar max-h-[min(70vh,780px)] overflow-y-auto overflow-x-hidden" @scroll="handleListScroll">
 							<FileListHeader :sortable="true" :sort-by="sortBy" :sort-direction="sortDirection" @sort="setSort" />
 
-							<FileListRow v-for="item in renderedFiles" :key="item.id" :item="item" :selected="isSelected(item)" :highlighted="highlightedFileId === item.id" name-field="display_name" @select="(event) => selectItem(event, item)" @open="openItemOnDoubleClick(item)" @contextmenu="(event) => openContextMenu(event, item)" @dragstart="(event) => onItemDragStart(event, item)" @drop="(event) => onItemDrop(event, item)" />
+							<FileListRow v-for="item in renderedFiles" :key="item.id" :item="item" :selected="isSelected(item)" :highlighted="highlightedFileId === item.id" name-field="display_name" @select="(event) => selectItem(event, item)" @open="openItemOnDoubleClick(item)" @contextmenu="(event) => openContextMenu(event, item)" />
 							<div v-if="!sortedFiles.length && !isLoading" class="p-[18px] text-[#5f6368] dark:text-slate-400">{{ t('drive.noFiles') }}</div>
 							<div v-if="isLoading" class="p-[18px]">
 								<LoadingState />
@@ -514,7 +428,7 @@ onBeforeUnmount(() => {
 
 			<div v-else class="relative">
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-					<FileListGridCard v-for="item in renderedFiles" :key="item.id" :item="item" :selected="isSelected(item)" :highlighted="highlightedFileId === item.id" name-field="display_name" @select="(event) => selectItem(event, item)" @open="openItemOnDoubleClick(item)" @contextmenu="(event) => openContextMenu(event, item)" @dragstart="(event) => onItemDragStart(event, item)" @drop="(event) => onItemDrop(event, item)" />
+					<FileListGridCard v-for="item in renderedFiles" :key="item.id" :item="item" :selected="isSelected(item)" :highlighted="highlightedFileId === item.id" name-field="display_name" @select="(event) => selectItem(event, item)" @open="openItemOnDoubleClick(item)" @contextmenu="(event) => openContextMenu(event, item)" />
 					<div v-if="!sortedFiles.length && !isLoading" class="col-span-full rounded-2xl border border-dashed border-[#dadce0] bg-white px-5 py-8 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{{ t('drive.noFiles') }}</div>
 					<div v-if="isLoading" class="col-span-full rounded-2xl border border-dashed border-[#dadce0] bg-white px-5 py-8 text-center text-[#5f6368] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
 						<LoadingState />
