@@ -71,8 +71,9 @@ export function useFileActions({
 		clearSelection,
 	} = useFileSelection({ sourceList, onBeforeSelect: closeContextMenu });
 
+	// File biasa selalu bisa; folder kini juga (download as zip via endpoint download-folder).
 	const canDownloadSelection = computed(
-		() => selectedFiles.value.some((file) => !file.is_folder),
+		() => selectedFiles.value.length > 0,
 	);
 	const canRenameSelection = computed(
 		() => selectedCount.value === 1 && primarySelectedFile.value?.capabilities?.rename !== false,
@@ -217,16 +218,31 @@ export function useFileActions({
 	}
 
 	function downloadSelection() {
-		const downloadableFiles = getActionFiles().filter((file) => !file.is_folder);
+		const targets = getActionFiles();
 		closeContextMenu();
-		uploadQueueStore.downloadFiles(downloadableFiles).catch((error) => {
-			errorRef.value = error.message;
-		});
+		const folders = targets.filter((file) => file.is_folder);
+		const files = targets.filter((file) => !file.is_folder);
+
+		for (const folder of folders) {
+			uploadQueueStore.downloadFolder(folder).catch((error) => {
+				errorRef.value = error.message;
+			});
+		}
+		if (files.length) {
+			uploadQueueStore.downloadFiles(files).catch((error) => {
+				errorRef.value = error.message;
+			});
+		}
 	}
 
 	function triggerDownload(file) {
 		closeContextMenu();
-		if (file?.is_folder) return;
+		if (file?.is_folder) {
+			uploadQueueStore.downloadFolder(file).catch((error) => {
+				errorRef.value = error.message;
+			});
+			return;
+		}
 		uploadQueueStore.downloadFile(file).catch((error) => {
 			errorRef.value = error.message;
 		});

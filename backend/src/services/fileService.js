@@ -361,6 +361,25 @@ export function findFolderRowByPath(userId, cloudAccountId, contentsVirtualPath)
 	return buildDisplayNames([row])[0];
 }
 
+// Akun-akun (DISTINCT) yang punya minimal satu baris di bawah `contentsVirtualPath`.
+// Dipakai Download Folder untuk pilih mode A (1 akun) vs B (>1 akun, union per-akun).
+// Sertakan provider + email untuk label subfolder mode B.
+export function listAccountsWithContents(userId, contentsVirtualPath) {
+	const prefix = normalizePath(contentsVirtualPath);
+	const likePrefix = `${prefix.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+
+	return db
+		.prepare(`
+      SELECT DISTINCT fm.cloud_account_id, ca.provider, ca.email
+      FROM file_metadata fm
+      INNER JOIN cloud_accounts ca ON ca.id = fm.cloud_account_id
+      WHERE fm.user_id = ? AND ca.status = 'active'
+        AND fm.virtual_path LIKE ? ESCAPE '\\'
+      ORDER BY ca.provider ASC, ca.email ASC
+    `)
+		.all(userId, likePrefix);
+}
+
 export function findFoldersByNameAndPath(userId, fileName, virtualPath) {
 	const normalized = normalizePath(virtualPath);
 	const rows = db

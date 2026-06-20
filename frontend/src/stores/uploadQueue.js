@@ -225,6 +225,33 @@ export const useUploadQueueStore = defineStore('uploadQueue', {
 		async downloadFile(file) {
 			return this.downloadFiles(file ? [file] : []);
 		},
+		// Folder → zip server-side. Navigasi <a href> (cookie auth) → browser stream langsung ke disk,
+		// tak buang memori browser. Tak ada progres/cancel (lihat CONTEXT.md), toast indeterminate lalu selesai.
+		async downloadFolder(folder) {
+			if (!folder?.is_folder) return;
+
+			const queueItem = this.registerOperation({
+				type: 'download',
+				name: `${folder.display_name || folder.file_name}.zip`,
+				size: 0,
+				status: 'downloading',
+			});
+
+			try {
+				const link = document.createElement('a');
+				link.href = api.downloadFolderUrl(folder.id);
+				link.download = `${folder.file_name}.zip`;
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+
+				// Browser ambil alih download; tak ada sinyal selesai → tandai handed-off.
+				this.updateUpload(queueItem.id, { progress_percentage: 100, status: 'completed' });
+			} catch (error) {
+				this.updateUpload(queueItem.id, { status: 'failed', error: error.message });
+				throw error;
+			}
+		},
 		async downloadFiles(files) {
 			const downloadableFiles = files.filter((file) => file && !file.is_folder);
 			if (!downloadableFiles.length) return;

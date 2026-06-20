@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath } from '../services/fileService.js';
+import archiver from 'archiver';
+import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath, listSubtree, listAccountsWithContents } from '../services/fileService.js';
 import { getAccountById, getActiveAccounts } from '../services/accountService.js';
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
@@ -327,6 +328,112 @@ router.get('/files/:id/download', async (req, res, next) => {
 			res.setHeader('Content-Length', String(context.file.size));
 		}
 		stream.pipe(res);
+	} catch (error) {
+		next(error);
+	}
+});
+
+const PROVIDER_LABELS = {
+	google_drive: 'Google Drive',
+	dropbox: 'Dropbox',
+	onedrive: 'OneDrive',
+	yandex: 'Yandex Disk',
+	pcloud: 'pCloud',
+	s3: 'Amazon S3',
+	mega: 'MEGA',
+};
+
+function providerLabel(provider) {
+	return PROVIDER_LABELS[provider] || provider || 'Cloud';
+}
+
+// Buang char ilegal path zip (slash, backslash, dan reserved Windows).
+function sanitizeZipSegment(name) {
+	return String(name || '').replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim() || 'unknown';
+}
+
+function normalizeFolderPath(input = '/') {
+	if (!input || input === '/') return '/';
+	const cleaned = input.startsWith('/') ? input : `/${input}`;
+	return cleaned.endsWith('/') ? cleaned : `${cleaned}/`;
+}
+
+// Stream tiap file subtree satu akun ke archive; path relatif terhadap `contentsPath`.
+// `prefix` opsional (mode B = label akun). File gagal → push ke `errors`, JANGAN abort.
+async function appendAccountSubtree(userId, account, contentsPath, archive, errors, prefix = '') {
+	const adapter = createAdapter(account);
+	const rows = listSubtree(userId, account.id, contentsPath).filter((row) => !row.is_folder);
+
+	for (const file of rows) {
+		const relativeDir = file.virtual_path.slice(contentsPath.length); // '' atau 'Sub/Nested/'
+		const zipName = `${prefix}${relativeDir}${file.file_name}`;
+		try {
+			const stream = await adapter.getDownloadStream(file);
+			archive.append(stream, { name: zipName });
+			// Tunggu entry selesai diproses sebelum buka stream berikutnya (hindari banyak stream live).
+			await new Promise((resolve, reject) => {
+				archive.once('entry', resolve);
+				stream.once('error', reject);
+			});
+		} catch (error) {
+			errors.push(`${zipName}: ${error.message}`);
+		}
+	}
+}
+
+router.get('/files/:id/download-folder', async (req, res, next) => {
+	try {
+		const context = await getFileContext(req.user.id, req.params.id);
+		if (!ensureFileContext(context, res)) {
+			return;
+		}
+		if (!context.file.is_folder) {
+			return res.status(400).json({ error: 'Only folders can be downloaded as a zip' });
+		}
+
+		const contentsPath = normalizeFolderPath(`${context.file.virtual_path}${context.file.file_name}/`);
+		const accounts = listAccountsWithContents(req.user.id, contentsPath);
+		const isUnion = accounts.length > 1; // >1 akun → mode B (subfolder per-akun ber-label)
+
+		const safeName = sanitizeZipSegment(context.file.file_name);
+		res.setHeader('Content-Type', 'application/zip');
+		res.setHeader('Content-Disposition', `attachment; filename="${safeName}.zip"`);
+
+		const archive = archiver('zip', { zlib: { level: 6 } });
+		const errors = [];
+
+		archive.on('warning', (err) => { if (err.code !== 'ENOENT') console.error('Zip warning', err); });
+		archive.on('error', (err) => {
+			console.error('Zip error', err);
+			if (!res.headersSent) res.status(500).json({ error: 'Failed to build zip' });
+			res.destroy();
+		});
+		// Klien tutup koneksi (cancel) → hentikan zip.
+		req.on('close', () => { if (!res.writableEnded) archive.abort(); });
+
+		archive.pipe(res);
+
+		if (isUnion) {
+			// Mode B: namespace per-akun → tak ada collision lintas akun.
+			for (const row of accounts) {
+				const account = getAccountById(req.user.id, row.cloud_account_id);
+				if (!account || account.status !== 'active') continue;
+				const label = sanitizeZipSegment(`${providerLabel(account.provider)} - ${account.email}`);
+				await appendAccountSubtree(req.user.id, account, contentsPath, archive, errors, `${label}/`);
+			}
+		} else {
+			// Mode A: isi folder langsung, struktur natural.
+			await appendAccountSubtree(req.user.id, context.account, contentsPath, archive, errors);
+		}
+
+		if (errors.length) {
+			archive.append(
+				`File berikut gagal diunduh dan dilewati:\n\n${errors.join('\n')}\n`,
+				{ name: '_errors.txt' },
+			);
+		}
+
+		await archive.finalize();
 	} catch (error) {
 		next(error);
 	}

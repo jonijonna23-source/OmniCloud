@@ -221,6 +221,9 @@ export const api = {
 	downloadUrl(fileId) {
 		return `${API_BASE_URL}/files/${fileId}/download`;
 	},
+	downloadFolderUrl(fileId) {
+		return `${API_BASE_URL}/files/${fileId}/download-folder`;
+	},
 	previewUrl(fileId) {
 		return `${API_BASE_URL}/files/${fileId}/preview`;
 	},
