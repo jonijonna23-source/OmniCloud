@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import archiver from 'archiver';
+import * as archiver from 'archiver';
 import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath, listSubtree, listAccountsWithContents } from '../services/fileService.js';
 import { getAccountById, getActiveAccounts } from '../services/accountService.js';
 import { createAdapter } from '../services/adapterRegistry.js';
