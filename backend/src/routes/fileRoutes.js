@@ -403,7 +403,6 @@ router.get('/files/:id/download-folder', async (req, res, next) => {
 		res.setHeader('Content-Disposition', `attachment; filename="${safeName}.zip"`);
 		
 		const archive = archiver('zip', { zlib: { level: 6 } });
-		const archive = archiverInstance('zip', { zlib: { level: 6 } });
 		const errors = [];
 
 		archive.on('warning', (err) => { if (err.code !== 'ENOENT') console.error('Zip warning', err); });
