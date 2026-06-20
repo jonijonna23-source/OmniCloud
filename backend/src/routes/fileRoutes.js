@@ -1,10 +1,28 @@
 import { Router } from 'express';
 import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-import archiver from 'archiver';
 
-import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath, listSubtree, listAccountsWithContents } from '../services/fileService.js';
-import { getAccountById, getActiveAccounts } from '../services/accountService.js';
+const require = createRequire(import.meta.url);
+const archiver = require('archiver');
+
+import {
+	listFilesByPath,
+	getFileById,
+	getFileByRemoteId,
+	listRecentFiles,
+	listStarredFiles,
+	searchFiles,
+	setFileStarred,
+	updateFileStarredByRemoteId,
+	findFoldersByNameAndPath,
+	listSubtree,
+	listAccountsWithContents
+} from '../services/fileService.js';
+
+import {
+	getAccountById,
+	getActiveAccounts
+} from '../services/accountService.js';
+
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
 import { syncAccount } from '../services/syncService.js';
