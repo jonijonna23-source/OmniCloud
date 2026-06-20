@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const archiver = require('archiver');
+import archiver from 'archiver';
 
 import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath, listSubtree, listAccountsWithContents } from '../services/fileService.js';
 import { getAccountById, getActiveAccounts } from '../services/accountService.js';
@@ -402,7 +402,7 @@ router.get('/files/:id/download-folder', async (req, res, next) => {
 		res.setHeader('Content-Type', 'application/zip');
 		res.setHeader('Content-Disposition', `attachment; filename="${safeName}.zip"`);
 		
-		const archiverInstance = (typeof archiver === 'function') ? archiver : (archiver.default || archiver);
+		const archive = archiver('zip', { zlib: { level: 6 } });
 		const archive = archiverInstance('zip', { zlib: { level: 6 } });
 		const errors = [];
 
