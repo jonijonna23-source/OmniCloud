@@ -1,7 +1,28 @@
 import { Router } from 'express';
-import * as archiver from 'archiver';
-import { listFilesByPath, getFileById, getFileByRemoteId, listRecentFiles, listStarredFiles, searchFiles, setFileStarred, updateFileStarredByRemoteId, findFoldersByNameAndPath, listSubtree, listAccountsWithContents } from '../services/fileService.js';
-import { getAccountById, getActiveAccounts } from '../services/accountService.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { ZipArchive } = require('archiver');
+
+import {
+	listFilesByPath,
+	getFileById,
+	getFileByRemoteId,
+	listRecentFiles,
+	listStarredFiles,
+	searchFiles,
+	setFileStarred,
+	updateFileStarredByRemoteId,
+	findFoldersByNameAndPath,
+	listSubtree,
+	listAccountsWithContents
+} from '../services/fileService.js';
+
+import {
+	getAccountById,
+	getActiveAccounts
+} from '../services/accountService.js';
+
 import { createAdapter } from '../services/adapterRegistry.js';
 import { selectBestAccount } from '../services/spaceAllocator.js';
 import { syncAccount } from '../services/syncService.js';
@@ -398,8 +419,8 @@ router.get('/files/:id/download-folder', async (req, res, next) => {
 		const safeName = sanitizeZipSegment(context.file.file_name);
 		res.setHeader('Content-Type', 'application/zip');
 		res.setHeader('Content-Disposition', `attachment; filename="${safeName}.zip"`);
-
-		const archive = archiver('zip', { zlib: { level: 6 } });
+		
+		const archive = new ZipArchive({ zlib: { level: 6 } });
 		const errors = [];
 
 		archive.on('warning', (err) => { if (err.code !== 'ENOENT') console.error('Zip warning', err); });
